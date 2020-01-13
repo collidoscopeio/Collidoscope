@@ -1,0 +1,918 @@
+diff --git a/include/cinder/audio/linux/ContextJack.h b/include/cinder/audio/linux/ContextJack.h
+index 3b7d3e944..691ffbb0e 100644
+--- a/include/cinder/audio/linux/ContextJack.h
++++ b/include/cinder/audio/linux/ContextJack.h
+@@ -1,88 +1,139 @@
+ /*
+- Copyright (c) 2015, The Cinder Project
+ 
+- This code is intended to be used with the Cinder C++ library, http://libcinder.org
++ Copyright (C) 2016  Queen Mary University of London 
++ Author: Fiore Martin
+ 
+- Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+- the following conditions are met:
++ This file is part of Collidoscope.
++ 
++ Collidoscope is free software: you can redistribute it and/or modify
++ it under the terms of the GNU General Public License as published by
++ the Free Software Foundation, either version 3 of the License, or
++ (at your option) any later version.
++
++ This program is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ GNU General Public License for more details.
++
++ You should have received a copy of the GNU General Public License
++ along with this program.  If not, see <http://www.gnu.org/licenses/>.
++
++ This file incorporates work covered by the following copyright and permission notice: 
++
++    Copyright (c) 2014, The Cinder Project
++
++    This code is intended to be used with the Cinder C++ library, http://libcinder.org
++
++    Redistribution and use in source and binary forms, with or without modification, are permitted provided that
++    the following conditions are met:
+ 
+     * Redistributions of source code must retain the above copyright notice, this list of conditions and
+-	the following disclaimer.
++    the following disclaimer.
+     * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+-	the following disclaimer in the documentation and/or other materials provided with the distribution.
+-
+- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+- WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+- PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+- ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+- TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+- NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+- POSSIBILITY OF SUCH DAMAGE.
++    the following disclaimer in the documentation and/or other materials provided with the distribution.
++
++    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
++    WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
++    PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
++    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++    TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++    POSSIBILITY OF SUCH DAMAGE.
++ 
+ */
+ 
+ #pragma once
+ 
+ #include "cinder/audio/Context.h" 
++#include <jack/jack.h>
+ 
+ namespace cinder { namespace audio { namespace linux {
+ 
+-struct OutputDeviceNodeJackImpl;
+-struct InputDeviceNodeJackImpl;
+ class ContextJack;
++class InputDeviceNodeJack;
+ 
++/**
++ * OutputNode (as in the cinder::audio::OutputNode) that sends audio to the sound card using the jack audio callback method. 
++ */ 
+ class OutputDeviceNodeJack : public OutputDeviceNode {
+   public:
+-	OutputDeviceNodeJack( const DeviceRef &device, const Format &format, const std::shared_ptr<ContextJack> &context );
++    OutputDeviceNodeJack( const DeviceRef &device, const Format &format, const std::shared_ptr<ContextJack> &context );
++
++    /** Gives this output node a reference to the JackInputNode. 
++     *  In initialize() the reference is used to give the input node access to jack input ports 
++     */
++    void setInput(InputDeviceNodeRef inputDeviceNode);
+ 
+   protected:
+-	void initialize()				override;
+-	void uninitialize()				override;
+-	void enableProcessing()			override;
+-	void disableProcessing()		override;
+-	bool supportsProcessInPlace() const	override	{ return false; }
++    void initialize()               override;
++    void uninitialize()             override;
++    void enableProcessing()         override;
++    void disableProcessing()        override;
++    bool supportsProcessInPlace() const override    { return false; }
+ 
+   private:
+-	void renderToBufferFromInputs();
++    // this is called by jack in the audio thread at every tick of the sound card 
++    static int jackCallback(jack_nframes_t nframes, void* userData);
++
++
++    void renderToBufferFromInputs();
+ 
+-	std::unique_ptr<OutputDeviceNodeJackImpl>     mImpl;
++    /**
++     * RenderData is passed as user_data to jack when the jack process callback is installed
++     */ 
++    struct RenderData{
++        RenderData() : inputNode(nullptr), outputNode(nullptr), context(nullptr){}
++        ~RenderData() { inputNode = nullptr; outputNode = nullptr;  context = nullptr; }
++        Node* outputNode;
++        Node* inputNode;
++        ContextJack* context;
++    } mRenderData;
+ 
+-	friend struct OutputDeviceNodeJackImpl;
++    std::weak_ptr<ContextJack>  mCinderContext;
++
++    jack_client_t *mClient;
++
++    std::array< jack_port_t*, 2 > mOutputPorts;
++
++    std::shared_ptr<InputDeviceNodeJack> mInputDeviceNode;
+ };
+ 
++/**
++ * InputNode (as in the cinder::audio::OutputNode) that reads audio from the sound card using the jack audio callback method. 
++ */ 
+ class InputDeviceNodeJack : public InputDeviceNode {
++  friend OutputDeviceNodeJack;
++
+   public:
+-	InputDeviceNodeJack( const DeviceRef &device, const Format &format, const std::shared_ptr<ContextJack> &context );
+-	virtual ~InputDeviceNodeJack();
++    InputDeviceNodeJack( const DeviceRef &device, const Format &format, const std::shared_ptr<ContextJack> &context );
+ 
+   protected:
+-	void initialize()				override;
+-	void uninitialize()				override;
+-	void enableProcessing()			override;
+-	void disableProcessing()		override;
+-	void process( Buffer *buffer )	override;
++    void initialize()               override;
++    void uninitialize()             override;
++    void enableProcessing()         override;
++    void disableProcessing()        override;
++    void process( Buffer *buffer )  override;
+ 
+   private:
+-
+-	std::unique_ptr<InputDeviceNodeJackImpl>   mImpl;
+-
+-	friend struct InputDeviceNodeJackImpl;
++    std::array< jack_port_t*, 2 > mInputPorts;
+ };
+ 
+ class ContextJack : public Context {
+   public:
+-	ContextJack();
+-	virtual ~ContextJack();
++    ContextJack() {}
++    virtual ~ContextJack() {}
++    
+ 
+-	OutputDeviceNodeRef	createOutputDeviceNode( const DeviceRef &device, const Node::Format &format = Node::Format() ) override;
+-	InputDeviceNodeRef	createInputDeviceNode( const DeviceRef &device, const Node::Format &format = Node::Format()  ) override;
++    OutputDeviceNodeRef createOutputDeviceNode( const DeviceRef &device, const Node::Format &format = Node::Format() ) override;
++    InputDeviceNodeRef  createInputDeviceNode( const DeviceRef &device, const Node::Format &format = Node::Format()  ) override;
++
++    OutputDeviceNodeRef mOutputDeviceNode;
++    InputDeviceNodeRef  mInputDeviceNode;
+ 
+-	//SLObjectItf getSLEngineObject() { return mSLEngineObject; }
+-	//SLEngineItf getSLEngineEngine() { return mSLEngineEngine; }
+ 
+   private:
+-	//SLObjectItf mSLEngineObject = nullptr;
+-	//SLEngineItf mSLEngineEngine = nullptr;
+-};	
++};  
++
++} } } // namespace cinder::audio::linux
+ 
+-} } } // namespace cinder::audio::linux
+\ No newline at end of file
+diff --git a/include/cinder/audio/linux/DeviceManagerJack.h b/include/cinder/audio/linux/DeviceManagerJack.h
+index fe5834e43..4f4b0afb1 100644
+--- a/include/cinder/audio/linux/DeviceManagerJack.h
++++ b/include/cinder/audio/linux/DeviceManagerJack.h
+@@ -1,24 +1,46 @@
+ /*
+- Copyright (c) 2015, The Cinder Project
+ 
+- This code is intended to be used with the Cinder C++ library, http://libcinder.org
++ Copyright (C) 2016  Queen Mary University of London 
++ Author: Fiore Martin
+ 
+- Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+- the following conditions are met:
++ This file is part of Collidoscope.
++ 
++ Collidoscope is free software: you can redistribute it and/or modify
++ it under the terms of the GNU General Public License as published by
++ the Free Software Foundation, either version 3 of the License, or
++ (at your option) any later version.
++
++ This program is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ GNU General Public License for more details.
++
++ You should have received a copy of the GNU General Public License
++ along with this program.  If not, see <http://www.gnu.org/licenses/>.
++
++ This file incorporates work covered by the following copyright and permission notice: 
++
++    Copyright (c) 2014, The Cinder Project
++
++    This code is intended to be used with the Cinder C++ library, http://libcinder.org
++
++    Redistribution and use in source and binary forms, with or without modification, are permitted provided that
++    the following conditions are met:
+ 
+     * Redistributions of source code must retain the above copyright notice, this list of conditions and
+-	the following disclaimer.
++    the following disclaimer.
+     * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+-	the following disclaimer in the documentation and/or other materials provided with the distribution.
+-
+- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+- WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+- PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+- ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+- TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+- NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+- POSSIBILITY OF SUCH DAMAGE.
++    the following disclaimer in the documentation and/or other materials provided with the distribution.
++
++    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
++    WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
++    PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
++    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++    TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++    POSSIBILITY OF SUCH DAMAGE.
++ 
+ */
+ 
+ #pragma once
+@@ -27,31 +49,41 @@
+ 
+ namespace cinder { namespace audio { namespace linux {
+ 
++/**
++ * DeviceManager ( as in cinder::audio::DeviceManager ) that handle the hardware device through the jack library.
++ * Note that this is not suitable for general purpose use. Most of the functionalities are indeed hard coded
++ * just to suit Collidoscope needs. In particular only two input and two output ports are assumed. 
++ *
++ */ 
+ class DeviceManagerJack : public DeviceManager {
+   public:
+-	DeviceManagerJack();
+-	virtual ~DeviceManagerJack();
+ 
+-	const std::vector<DeviceRef>& getDevices()									override;
+-	DeviceRef getDefaultOutput()												override;
+-	DeviceRef getDefaultInput()													override;
++    DeviceManagerJack();
++    virtual ~DeviceManagerJack();
++
++    const std::vector<DeviceRef>& getDevices()      override;
++    DeviceRef getDefaultOutput()                override;
++    DeviceRef getDefaultInput()             override;
+ 
+-	std::string getName( const DeviceRef &device )								override;
+-	size_t getNumInputChannels( const DeviceRef &device )						override;
+-	size_t getNumOutputChannels( const DeviceRef &device )						override;
+-	size_t getSampleRate( const DeviceRef &device )								override;
+-	size_t getFramesPerBlock( const DeviceRef &device )							override;
++    std::string getName( const DeviceRef &device )      override;
++    size_t getNumInputChannels( const DeviceRef &device )   override;
++    size_t getNumOutputChannels( const DeviceRef &device )  override;
++    size_t getSampleRate( const DeviceRef &device )     override;
++    size_t getFramesPerBlock( const DeviceRef &device ) override;
+ 
+-	void setSampleRate( const DeviceRef &device, size_t sampleRate )			override;
+-	void setFramesPerBlock( const DeviceRef &device, size_t framesPerBlock )	override;
++    void setSampleRate( const DeviceRef &device, size_t sampleRate )        override;
++    void setFramesPerBlock( const DeviceRef &device, size_t framesPerBlock )    override;
+ 
+-	//! Returns the hardware's actual frames per block, which might not be a power of two.
+-	size_t getFramesPerBlockHardware( const DeviceRef &device );
++    //! Returns the hardware's actual frames per block, which might not be a power of two.
++    size_t getFramesPerBlockHardware( const DeviceRef &device );
+ 
+ private:
+-	DeviceRef getDefaultDevice();
+ 
+-	DeviceRef   mDefaultDevice;
+-};	
++    std::vector<DeviceRef> mDevices;
++    DeviceRef   mDefaultOutDevice;
++    DeviceRef   mDefaultInDevice;
++    size_t mSampleRate;
++    size_t mBufferSize;
++};  
+ 
+-} } } // namespace cinder::audio::linux 	
+\ No newline at end of file
++} } } // namespace cinder::audio::linux     
+diff --git a/proj/cmake/platform_linux.cmake b/proj/cmake/platform_linux.cmake
+index ac9b355bd..f1ef538c5 100644
+--- a/proj/cmake/platform_linux.cmake
++++ b/proj/cmake/platform_linux.cmake
+@@ -30,10 +30,10 @@ list( APPEND SRC_SET_CINDER_APP_LINUX
+ 
+ if( NOT CINDER_DISABLE_AUDIO )
+ 	list( APPEND SRC_SET_CINDER_AUDIO_LINUX
+-	#	${CINDER_SRC_DIR}/cinder/audio/linux/ContextJack.cpp
+-		${CINDER_SRC_DIR}/cinder/audio/linux/ContextPulseAudio.cpp
+-	#	${CINDER_SRC_DIR}/cinder/audio/linux/DeviceManagerJack.cpp
+-		${CINDER_SRC_DIR}/cinder/audio/linux/DeviceManagerPulseAudio.cpp
++		${CINDER_SRC_DIR}/cinder/audio/linux/ContextJack.cpp
++	#	${CINDER_SRC_DIR}/cinder/audio/linux/ContextPulseAudio.cpp
++		${CINDER_SRC_DIR}/cinder/audio/linux/DeviceManagerJack.cpp
++	#	${CINDER_SRC_DIR}/cinder/audio/linux/DeviceManagerPulseAudio.cpp
+ 		${CINDER_SRC_DIR}/cinder/audio/linux/FileAudioLoader.cpp
+ 	)
+ 
+diff --git a/src/cinder/audio/Context.cpp b/src/cinder/audio/Context.cpp
+index c30632617..8c5b67382 100644
+--- a/src/cinder/audio/Context.cpp
++++ b/src/cinder/audio/Context.cpp
+@@ -46,8 +46,8 @@
+ 	#include "cinder/audio/android/ContextOpenSl.h"
+ 	#include "cinder/audio/android/DeviceManagerOpenSl.h"
+ #elif defined( CINDER_LINUX )
+-	#include "cinder/audio/linux/ContextPulseAudio.h"
+- 	#include "cinder/audio/linux/DeviceManagerPulseAudio.h"
++	#include "cinder/audio/linux/ContextJack.h"
++ 	#include "cinder/audio/linux/DeviceManagerJack.h"
+ #else
+ 	#define CINDER_AUDIO_DISABLED
+ #endif
+@@ -95,7 +95,7 @@ Context* Context::master()
+ #elif defined( CINDER_ANDROID )
+ 		sMasterContext.reset( new android::ContextOpenSl() );
+ #elif defined( CINDER_LINUX )
+-		sMasterContext.reset( new linux::ContextPulseAudio() );
++		sMasterContext.reset( new linux::ContextJack() );
+ #endif
+ 	}
+ 
+@@ -117,7 +117,7 @@ DeviceManager* Context::deviceManager()
+ #elif defined( CINDER_ANDROID )
+ 		sDeviceManager.reset( new android::DeviceManagerOpenSl() );
+ #elif defined( CINDER_LINUX )
+-		sDeviceManager.reset( new linux::DeviceManagerPulseAudio() );
++		sDeviceManager.reset( new linux::DeviceManagerJack() );
+ #endif
+ 	}
+ 
+diff --git a/src/cinder/audio/linux/ContextJack.cpp b/src/cinder/audio/linux/ContextJack.cpp
+index 606028a8f..1a68333f6 100644
+--- a/src/cinder/audio/linux/ContextJack.cpp
++++ b/src/cinder/audio/linux/ContextJack.cpp
+@@ -1,50 +1,337 @@
+ /*
+- Copyright (c) 2015, The Cinder Project
+ 
+- This code is intended to be used with the Cinder C++ library, http://libcinder.org
++ Copyright (C) 2016  Queen Mary University of London 
++ Author: Fiore Martin
+ 
+- Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+- the following conditions are met:
++ This file is part of Collidoscope.
++ 
++ Collidoscope is free software: you can redistribute it and/or modify
++ it under the terms of the GNU General Public License as published by
++ the Free Software Foundation, either version 3 of the License, or
++ (at your option) any later version.
++
++ This program is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ GNU General Public License for more details.
++
++ You should have received a copy of the GNU General Public License
++ along with this program.  If not, see <http://www.gnu.org/licenses/>.
++
++ This file incorporates work covered by the following copyright and permission notice: 
++
++    Copyright (c) 2014, The Cinder Project
++
++    This code is intended to be used with the Cinder C++ library, http://libcinder.org
++
++    Redistribution and use in source and binary forms, with or without modification, are permitted provided that
++    the following conditions are met:
+ 
+     * Redistributions of source code must retain the above copyright notice, this list of conditions and
+-	the following disclaimer.
++    the following disclaimer.
+     * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+-	the following disclaimer in the documentation and/or other materials provided with the distribution.
+-
+- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+- WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+- PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+- ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+- TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+- NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+- POSSIBILITY OF SUCH DAMAGE.
++    the following disclaimer in the documentation and/or other materials provided with the distribution.
++
++    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
++    WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
++    PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
++    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++    TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++    POSSIBILITY OF SUCH DAMAGE.
++ 
+ */
+ 
++
+ #include "cinder/audio/linux/ContextJack.h"
++#include "cinder/audio/Exception.h"
++
++#define NUM_CHANNELS 2
+ 
+ namespace cinder { namespace audio { namespace linux {
+ 
+-ContextJack::ContextJack()
++
++
++//--------------------------------------static utilities------------------------------------------
++
++inline void zeroJackPort( jack_port_t *port, jack_nframes_t nframes )
++{   
++  // FIXME seg fault at shutdown 
++  // memset(port, 0, sizeof(jack_default_audio_sample_t) * nframes); 
++}
++
++// copy audio from node buffer to jack port 
++inline void copyToJackPort(jack_port_t *port, float *source, jack_nframes_t nframes )
+ {
++    jack_default_audio_sample_t *out;
++    out = (jack_default_audio_sample_t *) jack_port_get_buffer( port, nframes );
+ 
++    memcpy( out, source, sizeof(jack_default_audio_sample_t) * nframes ) ;
+ }
+ 
+-ContextJack::~ContextJack()
++// copy audio from jack port to  node buffer
++inline void copyFromJackPort(jack_port_t *port, float *dest, jack_nframes_t nframes )
++{
++    jack_default_audio_sample_t *in;
++    in = (jack_default_audio_sample_t *) jack_port_get_buffer( port, nframes );
++
++    memcpy( dest, in, sizeof(jack_default_audio_sample_t) * nframes ) ;
++}
++
++
++// -------------------------------OutputDeviceNodeJack-------------------------------------------
++
++int OutputDeviceNodeJack::jackCallback(jack_nframes_t nframes, void* userData)
+ {
++    // retrieve user data 
++    RenderData *renderData = static_cast<RenderData *>( userData );
++
++    OutputDeviceNodeJack *outputDeviceNode = static_cast<OutputDeviceNodeJack *>( renderData->outputNode );
++
++    auto ctx = renderData->outputNode->getContext();
++    if( ! ctx ) {
++        // this is from some cinder library code but it should not happen in Collidoscope as the context is set
++        for( size_t chan = 0; chan < NUM_CHANNELS; chan++)
++            zeroJackPort( outputDeviceNode->mOutputPorts[chan], nframes );
++
++        return 0;
++    }
++
++    std::lock_guard<std::mutex> lock( ctx->getMutex() );
++    
++    // verify associated context still exists, which may not be true if we blocked in ~Context() and were then deallocated.
++    ctx = renderData->outputNode->getContext();
++    if( ! ctx ) {
++
++        for( size_t chan = 0; chan < NUM_CHANNELS; chan++)
++            zeroJackPort( outputDeviceNode->mOutputPorts[chan], nframes );
++
++        return 0;
++    }
+ 
++
++    Buffer *internalBuffer = outputDeviceNode->getInternalBuffer();
++    internalBuffer->zero();
++
++    ctx->preProcess();
++    // process the whole audio graph using by recursively pulling the input all the way to the top of the graph 
++    outputDeviceNode->pullInputs( internalBuffer );
++    
++    // if clip detection is enabled and buffer clipped, silence it
++    //if( outputDeviceNode->checkNotClipping() ){
++        //for( size_t chan = 0; chan < NUM_CHANNELS; chan++)
++        //    zeroJackPort( outputDeviceNode->mOutputPorts[chan], nframes );
++    //} 
++    //else {
++        for( size_t chan = 0; chan < NUM_CHANNELS; chan++)
++            copyToJackPort( outputDeviceNode->mOutputPorts[chan], internalBuffer->getChannel( chan ), nframes  );
++    //}
++
++    ctx->postProcess();
++
++    return 0;
++}
++
++inline void OutputDeviceNodeJack::setInput( InputDeviceNodeRef inputDeviceNode) 
++{
++    mInputDeviceNode = std::static_pointer_cast<InputDeviceNodeJack>(inputDeviceNode);
+ }
+ 
+-OutputDeviceNodeRef	ContextJack::createOutputDeviceNode( const DeviceRef &device, const Node::Format &format )
++OutputDeviceNodeJack::OutputDeviceNodeJack( const DeviceRef &device, const Format &format, const std::shared_ptr<ContextJack> &context ):
++    OutputDeviceNode( device, format),
++    mCinderContext( context )
+ {
+-	OutputDeviceNodeRef result;
+-	return result;
++}
++
++void OutputDeviceNodeJack::initialize()
++{
++
++    const char *client_name = "Collidoscope";
++    const char *server_name = NULL;
++    jack_options_t options = JackNullOption;
++    jack_status_t status;
++
++    // connect to Jack server 
++    mClient = jack_client_open (client_name, options, &status, server_name);
++    if( mClient == NULL){
++
++        std::string msg = "jack_client_open() failed. "; 
++        if(status & JackServerFailed) 
++            msg += "Unable to connect to Jack server";
++
++        throw cinder::audio::AudioContextExc(msg);
++    }
++
++    
++    // prepare user data for callback 
++    mRenderData.outputNode = this;
++    mRenderData.inputNode = mInputDeviceNode.get();
++    CI_ASSERT(mInputDeviceNode != nullptr);
++    mRenderData.context = static_cast<ContextJack *>( getContext().get() );
++
++    // install callback
++    jack_set_process_callback (mClient, jackCallback, &mRenderData );
++
++    // jack shutdown ? 
++    
++
++    // setup output ports 
++    mOutputPorts[0] = jack_port_register (mClient, "output1",
++                       JACK_DEFAULT_AUDIO_TYPE,
++                       JackPortIsOutput, 0);
++    
++    mOutputPorts[1] = jack_port_register (mClient, "output2",
++                       JACK_DEFAULT_AUDIO_TYPE,
++                       JackPortIsOutput, 0);
++    
++     if ((mOutputPorts[0] == NULL) || (mOutputPorts[0] == NULL)) {
++        throw cinder::audio::AudioContextExc("no more JACK ports available");
++     }
++
++    // setup input ports. Note that the reference to the input node is used. 
++    mInputDeviceNode->mInputPorts[0] = jack_port_register (mClient, "input1",
++                       JACK_DEFAULT_AUDIO_TYPE,
++                       JackPortIsInput, 0);
++
++    mInputDeviceNode->mInputPorts[1] = jack_port_register (mClient, "input2",
++                       JACK_DEFAULT_AUDIO_TYPE,
++                       JackPortIsInput, 0);
++
++
++    /* Tell the Jack server that we are ready to roll.  Our callback will start running now. */
++    if (jack_activate (mClient)) {
++        throw cinder::audio::AudioContextExc("cannot activate client");
++    }
++
++    // connect input ports to physical device (microphones)
++    const char **mikePorts = jack_get_ports (mClient, NULL, NULL,
++        JackPortIsPhysical|JackPortIsOutput);
++
++    if (mikePorts == NULL) {
++        throw cinder::audio::AudioContextExc("no physical input ports available");
++    }
++
++    if (jack_connect (mClient,  mikePorts[0], jack_port_name (mInputDeviceNode->mInputPorts[0]))) {
++        throw cinder::audio::AudioContextExc("cannot connect input port 0");
++    }
++
++    if (jack_connect (mClient, mikePorts[1], jack_port_name( mInputDeviceNode->mInputPorts[1]) )) {
++        throw cinder::audio::AudioContextExc("cannot connect input port 1");
++    }
++
++    // connect output ports to physical device (audio out )
++    const char **speakerPorts = jack_get_ports (mClient, NULL, NULL,
++                JackPortIsPhysical|JackPortIsInput);
++
++    if (speakerPorts == NULL) {
++        throw cinder::audio::AudioContextExc("no physical output ports available");
++    }
++
++    if (jack_connect (mClient, jack_port_name (mOutputPorts[0]), speakerPorts[0])) {
++        throw cinder::audio::AudioContextExc("cannot connect output port 0");
++    }
++
++    if (jack_connect (mClient, jack_port_name (mOutputPorts[1]), speakerPorts[1])) {
++        throw cinder::audio::AudioContextExc("cannot connect output port 1");
++    }
++
++    jack_free( mikePorts );
++    jack_free( speakerPorts );
++}
++
++
++void OutputDeviceNodeJack::uninitialize()
++{
++    jack_client_close( mClient );
++}
++
++void OutputDeviceNodeJack::enableProcessing()
++{
++}
++
++void OutputDeviceNodeJack::disableProcessing()
++{
++}
++
++
++//----------------------------------------- InputDeviceNodeJack ---------------------------------------------------
++
++
++InputDeviceNodeJack::InputDeviceNodeJack( const DeviceRef &device, const Format &format, const std::shared_ptr<ContextJack> &context ):
++    InputDeviceNode( device, format)
++{
++}
++
++void InputDeviceNodeJack::initialize() 
++{
++}
++
++void InputDeviceNodeJack::uninitialize()
++{
++}
++
++void InputDeviceNodeJack::enableProcessing()
++{
++}
++
++void InputDeviceNodeJack::disableProcessing()
++{
++}
++
++// This is called when the output node pull all the inputs in the jack callback. 
++// Takes audio interface input from the jack port and copies it in the node buffer
++void InputDeviceNodeJack::process( Buffer *buffer )
++{
++    for( size_t chan = 0; chan < NUM_CHANNELS; chan++){
++       copyFromJackPort(mInputPorts[chan], buffer->getChannel( chan ), buffer->getNumFrames() ); 
++    }
++}
++
++
++//-------------------------------------------ContextJack-----------------------------------------------------------
++
++OutputDeviceNodeRef ContextJack::createOutputDeviceNode( const DeviceRef &device, const Node::Format &format )
++{
++    
++    if( mOutputDeviceNode  == nullptr ) {
++        auto thisRef = std::static_pointer_cast<ContextJack>( shared_from_this() );
++
++        mOutputDeviceNode = makeNode( new OutputDeviceNodeJack( device, Node::Format().channels(NUM_CHANNELS), thisRef ) ) ;
++
++        // the output device node must have a reference to input device node. In OutputDeviceNodeJack::initialize() 
++        // the input node is passed the jack input ports that it will use to fetch incoming audio from the audio interface
++        // Whichever node (input or ouput) gets initialized after the other, executes the following block:
++        if( mInputDeviceNode != nullptr){
++            auto castedOutputDeviceNode = std::static_pointer_cast<OutputDeviceNodeJack>( mOutputDeviceNode );
++            castedOutputDeviceNode->setInput( mInputDeviceNode );   
++        }
++    }
++
++    return mOutputDeviceNode;
+ }
+ 
+ InputDeviceNodeRef ContextJack::createInputDeviceNode( const DeviceRef &device, const Node::Format &format  )
+ {
+-	InputDeviceNodeRef result;
+-	return result;
++    if( mInputDeviceNode  == nullptr ) {
++        auto thisRef = std::static_pointer_cast<ContextJack>( shared_from_this() );
++
++        mInputDeviceNode = makeNode( new InputDeviceNodeJack( device, Node::Format().channels( NUM_CHANNELS ), thisRef ) ) ;
++
++        // the output device node must have a reference to input device node. In OutputDeviceNodeJack::initialize() 
++        // the input node is passed the jack input ports that it will use to fetch incoming audio from the audio interface
++        // Whichever node (input or ouput) gets initialized after the other, executes the following block:
++        if( mOutputDeviceNode != nullptr){
++            auto castedOutputDeviceNode = std::static_pointer_cast<OutputDeviceNodeJack>( mOutputDeviceNode );
++            castedOutputDeviceNode->setInput( mInputDeviceNode );   
++        }
++    }
++
++    return mInputDeviceNode;
+ }
+ 
+-} } } // namespace cinder::audio::linux
+\ No newline at end of file
++
++
++
++
++} } } // namespace cinder::audio::linux
+diff --git a/src/cinder/audio/linux/DeviceManagerJack.cpp b/src/cinder/audio/linux/DeviceManagerJack.cpp
+index 3a05d730f..7fa3fafd7 100644
+--- a/src/cinder/audio/linux/DeviceManagerJack.cpp
++++ b/src/cinder/audio/linux/DeviceManagerJack.cpp
+@@ -1,38 +1,157 @@
+ /*
+- Copyright (c) 2015, The Cinder Project
+ 
+- This code is intended to be used with the Cinder C++ library, http://libcinder.org
++ Copyright (C) 2016  Queen Mary University of London 
++ Author: Fiore Martin
+ 
+- Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+- the following conditions are met:
++ This file is part of Collidoscope.
++ 
++ Collidoscope is free software: you can redistribute it and/or modify
++ it under the terms of the GNU General Public License as published by
++ the Free Software Foundation, either version 3 of the License, or
++ (at your option) any later version.
++
++ This program is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ GNU General Public License for more details.
++
++ You should have received a copy of the GNU General Public License
++ along with this program.  If not, see <http://www.gnu.org/licenses/>.
++
++ This file incorporates work covered by the following copyright and permission notice: 
++
++    Copyright (c) 2014, The Cinder Project
++
++    This code is intended to be used with the Cinder C++ library, http://libcinder.org
++
++    Redistribution and use in source and binary forms, with or without modification, are permitted provided that
++    the following conditions are met:
+ 
+     * Redistributions of source code must retain the above copyright notice, this list of conditions and
+-	the following disclaimer.
++    the following disclaimer.
+     * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+-	the following disclaimer in the documentation and/or other materials provided with the distribution.
+-
+- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+- WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+- PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+- ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+- TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+- HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+- NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+- POSSIBILITY OF SUCH DAMAGE.
++    the following disclaimer in the documentation and/or other materials provided with the distribution.
++
++    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
++    WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
++    PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
++    ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++    TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
++    NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++    POSSIBILITY OF SUCH DAMAGE.
++ 
+ */
+ 
+ #include "cinder/audio/linux/DeviceManagerJack.h"
++#include "cinder/audio/Exception.h"
++#include <jack/jack.h>
++
+ 
+ namespace cinder { namespace audio { namespace linux {
+ 
+-DeviceManagerJack::DeviceManagerJack()
++DeviceManagerJack::DeviceManagerJack() 
+ {
+ 
++    // hardcoded devices. They are always JackIn and JackOut 
++    mDevices.push_back( addDevice("JackIn") );
++    mDevices.push_back( addDevice("JackOut") );
++
++    jack_status_t status;
++    
++    // open a jack client, get info and close
++    jack_client_t *client = jack_client_open ("device info", JackNullOption, &status, NULL);
++    if( client == NULL){
++
++        std::string msg = "jack_client_open() failed. "; 
++        if(status & JackServerFailed) 
++            msg += "Unable to connect to Jack server";
++
++        throw cinder::audio::AudioContextExc(msg);
++    }
++
++    mSampleRate = jack_get_sample_rate( client );
++    mBufferSize = jack_get_buffer_size( client );
++
++    jack_client_close( client );
+ }
+ 
+ DeviceManagerJack::~DeviceManagerJack()
+ {
+-	
++    
++}
++
++const std::vector<DeviceRef>& DeviceManagerJack::getDevices()
++{
++   return mDevices;
++}
++
++DeviceRef DeviceManagerJack::getDefaultOutput()
++{
++    return mDevices[1];
++}
++
++DeviceRef DeviceManagerJack::getDefaultInput()
++{
++    return mDevices[0];
++}
++
++//hardcoded name same as key 
++std::string DeviceManagerJack::getName( const DeviceRef &device )
++{
++    return device->getKey();
++}
++
++size_t DeviceManagerJack::getNumInputChannels( const DeviceRef &device )
++{
++    if( device->getKey() == mDevices[0]->getKey() )
++        return 2;
++    else
++        return 0;
++}
++
++size_t DeviceManagerJack::getNumOutputChannels( const DeviceRef &device )
++{
++    if( device->getKey() == mDevices[1]->getKey() )
++        return 2;
++    else
++        return 0;
++}
++
++size_t DeviceManagerJack::getSampleRate( const DeviceRef &device )
++{
++    return mSampleRate;
++}
++
++size_t DeviceManagerJack::getFramesPerBlock( const DeviceRef &device )
++{
++    return mBufferSize;
++}
++
++
++void DeviceManagerJack::setSampleRate( const DeviceRef &device, size_t sampleRate )
++{
++    throw "setSampleRate not supported";
+ }
+ 
+-} } } // namespace cinder::audio::linux
+\ No newline at end of file
++void DeviceManagerJack::setFramesPerBlock( const DeviceRef &device, size_t framesPerBlock )
++{
++    throw "setFramesPerBlock not supported";
++}
++
++
++//! Returns the hardware's actual frames per block, which might not be a power of two.
++//        size_t getFramesPerBlockHardware( const DeviceRef &device );
++//
++
++size_t DeviceManagerJack::getFramesPerBlockHardware( const DeviceRef &device )
++{
++    return mBufferSize;
++}
++
++
++
++
++
++
++} } } // namespace cinder::audio::linux
