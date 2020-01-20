@@ -24,6 +24,7 @@
 
 #include <array>
 #include <type_traits>
+#include <cmath>
 
 #include "EnvASR.h"
 

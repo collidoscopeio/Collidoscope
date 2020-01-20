@@ -1,5 +1,5 @@
 #__LINUX_ALSA__ Basic
-cmake_minimum_required( VERSION 3.14.3 FATAL_ERROR )
+cmake_minimum_required( VERSION 2.8 FATAL_ERROR )
 set( CMAKE_VERBOSE_MAKEFILE on )
 
 project( CollidoscopeApp HOMEPAGE_URL http://collidoscope.io)
@@ -43,7 +43,7 @@ set( SRC_FILES
 
 include( "${CINDER_PATH}/proj/cmake/modules/cinderMakeApp.cmake" )
 
-add_definitions(-DNUM_WAVES=1)
+add_definitions(-DNUM_WAVES=2)
 add_definitions(-DUSE_PARTICLES)
 
 if(WIN32)
@@ -51,6 +51,7 @@ if(WIN32)
     set( LIBS "winmm") # for MIDI
 elseif(UNIX)
     add_definitions(-D__LINUX_ALSA__)
+    set( LIBS "-lasound -latomic -ljack") # for MIDI
 endif()
 
 ci_make_app(

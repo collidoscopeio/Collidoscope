@@ -53,15 +53,6 @@ using ci::Color;
 using ci::ColorA;
 
 /**
- * A Cursor is the white thingy that loops through the selection when Collidoscope is played.
- */ 
-struct Cursor {
-    static const int kNoPosition = -100;
-    int pos;
-    double lastUpdate;
-};
-
-/**
  * Collidoscope's graphical wave 
  *
  */ 
@@ -70,6 +61,15 @@ class Wave
     friend class ParticleController;
 
 public:
+
+    /**
+     * A Cursor is the white thingy that loops through the selection when Collidoscope is played.
+     */ 
+    struct Cursor {
+        static const int kNoPosition = -100;
+        int pos;
+        double lastUpdate;
+    };
 
     /**
      * The selection of the wave that is controlled by the big horizontal knob

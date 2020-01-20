@@ -46,7 +46,7 @@
 #include "BufferToWaveRecorderNode.h"
 #include "cinder/audio/Context.h"
 #include "cinder/audio/Target.h"
-
+#include <cmath>
 
 
 // ----------------------------------------------------------------------------------------------------
