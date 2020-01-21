@@ -343,7 +343,13 @@ void CollidoscopeApp::receiveCommands()
 
         if ( m.getVoice() == collidoscope::MIDIMessage::Voice::eNoteOn ){
             int midiNote = m.getData_1();
-            mAudioEngine.noteOn( waveIdx, midiNote );
+	    unsigned int velocity = m.getData_2();
+	    if(velocity == 0){
+		    mAudioEngine.noteOff( waveIdx, midiNote );
+	    }else{
+		    mAudioEngine.noteOn( waveIdx, midiNote );
+	    }
+
         }
         else if ( m.getVoice() == collidoscope::MIDIMessage::Voice::eNoteOff ){
             int midiNote = m.getData_1();
