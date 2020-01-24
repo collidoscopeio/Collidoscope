@@ -26,7 +26,8 @@ gstreamer1.0-alsa \
 gstreamer1.0-pulseaudio \
 gstreamer1.0-plugins-bad \
 libboost-all-dev \
-libxrandr-dev
+libxrandr-dev \
+libjack-jackd2-dev
 
 ```
 
