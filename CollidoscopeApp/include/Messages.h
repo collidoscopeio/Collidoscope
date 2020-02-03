@@ -25,16 +25,12 @@
  * Enumeration of all the possible commands exchanged between audio thread and graphic thread.
  *
  */ 
-enum class Command {
+enum class Command 
+{
     // message carrying info about one chunk of recorder audio. 
     WAVE_CHUNK,
     // message sent when a new recording starts. The gui resets the wave upon receiving it. 
     WAVE_START,
-
-    // new grain created 
-    TRIGGER_UPDATE,
-    // synth became idle
-    TRIGGER_END,
 
     NOTE_ON,
     NOTE_OFF,
@@ -78,22 +74,16 @@ inline RecordWaveMsg makeRecordWaveMsg( Command cmd, std::size_t index, float ar
  */ 
 struct CursorTriggerMsg
 {
-    Command cmd; // TRIGGER_UPDATE or TRIGGER_END
-    int synthID;
+  enum class Type
+  {
+    NEW_TRIGGER,
+    TRIGGER_END
+  } type;
+
+  int synthID;
+  size_t durationInSamples;
 };
 
-/**
- * Utility function to create a new CursorTriggerMsg.
- */ 
-inline CursorTriggerMsg makeCursorTriggerMsg( Command cmd, std::uint8_t synthID )
-{
-    CursorTriggerMsg msg;
-
-    msg.cmd = cmd;
-    msg.synthID = synthID;
-
-    return msg;
-}
 
 /**
  * Message sent from the graphic (main) thread to the audio thread to start a new voice of the granular synthesizer.

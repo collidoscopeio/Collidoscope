@@ -1,11 +1,11 @@
 /*
 
  Copyright (C) 2015  Fiore Martin
- Copyright (C) 2016  Queen Mary University of London 
+ Copyright (C) 2016  Queen Mary University of London
  Author: Fiore Martin
 
  This file is part of Collidoscope.
- 
+
  Collidoscope is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
@@ -23,227 +23,252 @@
 
 #include "Wave.h"
 #include "DrawInfo.h"
+#include "cinder/CinderMath.h"
 
 
 using namespace ci;
 
-Wave::Wave( size_t numChunks, Color selectionColor ):
-    mNumChunks( numChunks ),
-    mSelection( this, selectionColor ),
-    mColor(Color(0.5f, 0.5f, 0.5f)),
-    mFilterCoeff( 1.0f )
+Wave::Wave(Color selectionColor) :
+  mColorSelected(selectionColor),
+  mColorSelectionBar(selectionColor, 0.5f)
 {
-    mChunks.reserve( numChunks );
+  mChunks.reserve(Config::NUM_CHUNKS);
 
-    for ( size_t i = 0; i < numChunks; i++ ){
-        mChunks.emplace_back( i );
-    }
+  for (size_t i = 0; i < Config::NUM_CHUNKS; i++) 
+  {
+    mChunks.emplace_back(i);
+  }
 
-    // init cinder batch drawing
-    auto lambert = gl::ShaderDef().color();
-    gl::GlslProgRef shader = gl::getStockShader( lambert );
-    mChunkBatch = gl::Batch::create( geom::Rect( ci::Rectf( 0, 0, Chunk::kWidth, 1 ) ), shader );
+  // init cinder batch drawing
+  auto lambert = gl::ShaderDef().color();
+  gl::GlslProgRef shader = gl::getStockShader(lambert);
+  mChunkBatch = gl::Batch::create(geom::Rect(ci::Rectf(0, 0, Chunk::kWidth, 1)), shader);
 }
 
-void Wave::reset( bool onlyChunks )
+void Wave::reset(const DrawInfo& di)
 {
-    for (size_t i = 0; i < getSize(); i++){
-        mChunks[i].reset();
-    }
-
-    if (onlyChunks)
-        return;
-
-    mSelection.setToNull();
+  for (size_t i = 0; i < Config::NUM_CHUNKS; i++)
+  {
+    mChunks[i].reset();
+  }
 }
-
 
 void Wave::setChunk(size_t index, float bottom, float top)
 {
-    Chunk &c = mChunks[index];
-    c.setTop(top);
-    c.setBottom(bottom);
+  Chunk &c = mChunks[index];
+  c.setTop(top);
+  c.setBottom(bottom);
 }
 
-inline const Chunk & Wave::getChunk(size_t index)
+inline const Chunk & Wave::getChunk(size_t index) const
 {
-    return mChunks[index];
+  return mChunks[index];
 }
 
-void Wave::update( double secondsPerChunk, const DrawInfo& di ) {
-    typedef std::map<int, Cursor>::iterator MapItr;
+void Wave::setSelectionStart(size_t start)
+{
+  /* deselect the previous */
+  mChunks[mSelectionStart].setAsSelectionStart(false);
+  /* select the next */
+  mChunks[start].setAsSelectionStart(true);
 
+  mSelectionExists = true;
 
-    // update the cursor positions
-    double now = ci::app::getElapsedSeconds();
-    for (MapItr itr = mCursors.begin(); itr != mCursors.end(); ++itr){
-        if (mSelection.isNull()){
-            itr->second.pos = Cursor::kNoPosition;
-        }
+  size_t size = getSelectionSize();
 
-        if ( itr->second.pos == Cursor::kNoPosition )
-            continue;
+  mSelectionStart = start;
+  mSelectionEnd = start + size - 1;
+  if (mSelectionEnd > Config::NUM_CHUNKS - 1)
+    mSelectionEnd = Config::NUM_CHUNKS - 1;
 
+}
 
-        double elapsed = now - itr->second.lastUpdate;
+void Wave::setSelectionSize(size_t size)
+{
+  if (size <= 0)
+  {
+    mSelectionExists = false;
+    return;
+  }
 
-        // A chunk of audio corresponds to a certain time lenght of audio, according to sample rate.
-        // Use elapsed time to advance through chunks so that the cursor is animated. 
-        // So it goes from start to end of the selection in the time span of the grain 
-        itr->second.pos = mSelection.getStart() + int( elapsed / secondsPerChunk );
+  size -= 1;
 
-        // check we don't go too far off 
-        if (itr->second.pos > mSelection.getEnd()){
-            itr->second.pos = Cursor::kNoPosition;
-        }
+  // check boundaries: size cannot bring the selection end beyond the end of the wave 
+  if (mSelectionStart + size >= Config::NUM_CHUNKS) 
+  {
+    size = Config::NUM_CHUNKS - mSelectionStart - 1;
+  }
+
+  /* deselect the previous */
+  mChunks[mSelectionEnd].setAsSelectionEnd(false);
+
+  mSelectionEnd = mSelectionStart + size;
+  /* select the next */
+  mChunks[mSelectionEnd].setAsSelectionEnd(true);
+
+  mSelectionExists = true;
+
+}
+
+size_t Wave::getSelectionSize() const
+{
+  if (!mSelectionExists) 
+    return 0;
+  else 
+    return 1 + mSelectionEnd - mSelectionStart;
+}
+
+void Wave::addCursor(SynthID id, const DrawInfo& di, size_t durationInChunks)
+{
+  Cursor newCursor{};
+  newCursor.initialPosition = getSelectionStart();
+  newCursor.pos = getSelectionStart();
+  newCursor.creationTime =  ci::app::getElapsedSeconds();
+  newCursor.durationInChunks = durationInChunks;
+
+  mCursors[id].push_back(newCursor);
+}
+
+void Wave::update(const DrawInfo& di) 
+{
+
+  // update the cursor positions
+  double now = ci::app::getElapsedSeconds();
+  
+  for (auto& voiceCursors : mCursors)
+  {
+    for (Cursor& cursor : voiceCursors)
+    {
+      if (!mSelectionExists)
+      {
+        cursor.pos = -1;
+      }
+
+      if (cursor.pos == -1)
+        continue;
+
+      double elapsed = now - cursor.creationTime;
+
+      // A chunk of audio corresponds to a certain time lenght of audio, according to sample rate.
+      // Use elapsed time to advance through chunks so that the cursor is animated. 
+      // So it goes from start to end of the selection in the time span of the grain 
+      cursor.pos = cursor.initialPosition + int(elapsed / Config::CHUNK_LEN_SECONDS);
+
     }
 
-    // update chunks for animation 
-    for ( auto &chunk : mChunks ){
-        chunk.update( di );
-    }
+    voiceCursors.erase(std::remove_if(voiceCursors.begin(),
+                                      voiceCursors.end(),
+                                      [](const Wave::Cursor& c) { return c.pos - c.initialPosition >= c.durationInChunks || c.pos == -1; }),
+                       voiceCursors.end());
+  }
+
+
+
+  // update chunks for animation 
+  for (auto &chunk : mChunks)
+  {
+    chunk.update(di);
+  }
 
 #ifdef USE_PARTICLES
-    mParticleController.updateParticles();
+
+  const int randSChunkInSelection = Rand::randInt(0, getSelectionSize());
+  const int centerChunkIndex = getSelectionStart() + randSChunkInSelection;
+  float cloudCentreX = 1.0f + (centerChunkIndex * (2.0f + Chunk::kWidth)) + Chunk::kWidth / 2.0f;
+  const float wavePixelLen = Config::NUM_CHUNKS * (2 + Chunk::kWidth);
+  cloudCentreX *= float(di.getWindowWidth()) / wavePixelLen;
+  
+  const vec2 cloudCentre{ cloudCentreX, di.getWaveCenterY() };
+  const float radius = [this]()
+  {
+    auto nonEmpty = std::find_if(mCursors.begin(), mCursors.end(), [](const std::vector<Cursor>& c) { return !c.empty(); });
+    if (nonEmpty != mCursors.end())
+      return ci::lmap<float>(mParticleRadiusCoeff, 1, Config::MAX_DURATION_COEFF, 0, (ci::app::getWindowHeight() / NUM_WAVES) * 0.5f);
+    else
+      return 0.0f; // all empty, no notes is playing 
+  }();
+
+  mParticleController.updateParticles(cloudCentre, radius, mSelectionAlpha);
 #endif
 
 }
 
-void Wave::draw( const DrawInfo& di ){
+void Wave::draw(const DrawInfo& di) 
+{
 
-
-    /* ########### draw the particles ########## */
+  /* ########### draw the particles ########## */
 #ifdef USE_PARTICLES
-    mParticleController.draw();
+  mParticleController.draw();
 #endif
 
-    /* ########### draw the wave ########## */
-    /* scale the wave to fit the window */
-    gl::pushModelView(); 
+  /* ########### draw the wave ########## */
+  /* scale the wave to fit the window */
+  gl::pushModelView();
 
-    
-    const float wavePixelLen =  ( mNumChunks * ( 2 + Chunk::kWidth ) );
-    /* scale the x-axis for the wave to fit the window precisely */
-    gl::scale( ((float)di.getWindowWidth() ) / wavePixelLen , 1.0f);
-    /* draw the chunks */
-    if (mSelection.isNull()){
-        /* no selection: all chunks the same color */
-        gl::color(mColor); 
-        for (size_t i = 0; i < getSize(); i++){
-            mChunks[i].draw( di, mChunkBatch );
-        }
+  const float wavePixelLen = (Config::NUM_CHUNKS * (2 + Chunk::kWidth));
+  /* scale the x-axis for the wave to fit the window precisely */
+  gl::scale(((float)di.getWindowWidth()) / wavePixelLen, 1.0f);
+
+  /* draw the chunks */
+  if (!mSelectionExists)
+  {
+    /* no selection: all chunks the same color */
+    gl::color(mColorUnselected);
+    for (size_t i = 0; i < Config::NUM_CHUNKS; i++)
+    {
+      mChunks[i].draw(di, mChunkBatch);
     }
-    else{ 
-        // Selection not null 
-        gl::color(this->mColor); 
+  }
+  else
+  {
+    gl::enableAlphaBlending();
 
-        // update the array with cursor positions 
-        mCursorsPos.clear();
-        for ( auto cursor : mCursors ){
-            mCursorsPos.push_back( cursor.second.pos );
-        }
+    cinder::ColorA colorForSelection{ mColorSelected, mSelectionAlpha };
 
-        gl::enableAlphaBlending();
+    gl::color(mColorSelectionBar);
+    mChunks[getSelectionStart()].drawBar(di, mChunkBatch);
+    mChunks[getSelectionEnd()].drawBar(di, mChunkBatch);
 
-        const float selectionAlpha = 0.5f + mFilterCoeff * 0.5f;
+    for (size_t chunkIdx = 0; chunkIdx < Config::NUM_CHUNKS; chunkIdx++)
+    {
+      
+      if (hasCursorAtChunk(chunkIdx))
+      {
+        const Color cursorColor{1.0f, 1.0f, 1.0f};
+        gl::color(cursorColor);
+        mChunks[chunkIdx].draw(di, mChunkBatch);
+      }
+      else if (chunkIdx >= getSelectionStart() && chunkIdx <= getSelectionEnd())
+      {
+        gl::color(colorForSelection);
+      }
+      else
+      {
+        gl::color(mColorUnselected);
+      }
 
-
-        for (size_t i = 0; i < getSize(); i++){
-            /* when in selection use selection color */
-            
-            if (i == mSelection.getStart()){
-                /* draw the selection bar with a transparent selection color */
-                gl::color(mSelection.getColor().r, mSelection.getColor().g, mSelection.getColor().b, 0.5f);
-                mChunks[i].drawBar( di, mChunkBatch );
-
-                /* set the color to the selection */
-                gl::color(mSelection.getColor().r, mSelection.getColor().g, mSelection.getColor().b, selectionAlpha);
-            }
-
-            // check if one of the cursors is positioned in this chunk, and draw it white if it is 
-            if (std::find(mCursorsPos.begin(), mCursorsPos.end(),i) != mCursorsPos.end() ){
-                gl::color(CURSOR_CLR);
-                mChunks[i].draw( di, mChunkBatch );
-                gl::color(mSelection.getColor().r, mSelection.getColor().g, mSelection.getColor().b, selectionAlpha);
-            }
-            else{
-                /* just draw with current color */
-                mChunks[i].draw( di, mChunkBatch );
-            }
-            
-            /* exit selection: go back to wave color */
-            if (i == mSelection.getEnd()){
-                /* draw the selection bar with a transparent selection color */
-                gl::color(mSelection.getColor().r, mSelection.getColor().g, mSelection.getColor().b, 0.5f);
-                mChunks[i].drawBar( di, mChunkBatch );
-                /* set the color to the wave */
-                gl::color(this->mColor);  
-            }
-        }
-        gl::disableAlphaBlending();
+      mChunks[chunkIdx].draw(di, mChunkBatch);
     }
-    
+      
+    gl::disableAlphaBlending();
+  }
 
-    gl::popModelView();
+  gl::popModelView();
 
 }
 
+bool Wave::hasCursorAtChunk(int chunkIdx) const
+{
+  for (const std::vector<Cursor>& voiceCursors : mCursors)
+  {
+    for (const Cursor& cursor : voiceCursors)
+    {
+      if (cursor.pos % Config::NUM_CHUNKS == chunkIdx) return true;
+    }
+  }
 
-
-//**************** Selection ***************//
-
-Wave::Selection::Selection(Wave * w, Color color) : 
-    mWave( w ), 
-    mSelectionStart( 0 ), 
-    mSelectionEnd( 0 ),
-    mColor( color ),
-    mParticleSpread( 1 )
-{}
-
-
-void Wave::Selection::setStart(size_t start)  {
-
-    /* deselect the previous */
-    mWave->mChunks[mSelectionStart].setAsSelectionStart( false );
-    /* select the next */
-    mWave->mChunks[start].setAsSelectionStart( true );
-    
-    mNull = false;
-
-    size_t size = getSize();
-
-    mSelectionStart = start;
-    mSelectionEnd = start + size - 1;
-    if ( mSelectionEnd > mWave->getSize() - 1 )
-        mSelectionEnd = mWave->getSize() - 1;
-
+  return false;
 }
 
-void Wave::Selection::setSize(size_t size)  {
-
-    if ( size <= 0 ){
-        mNull = true;
-        return;
-    }
-
-    size -= 1;
-
-    // check boundaries: size cannot bring the selection end beyond the end of the wave 
-    if ( mSelectionStart+size >= mWave->mNumChunks ){
-        size = mWave->mNumChunks - mSelectionStart - 1;
-    }
-
-    /* deselect the previous */
-    mWave->mChunks[mSelectionEnd].setAsSelectionEnd( false );
-
-    mSelectionEnd = mSelectionStart + size;
-    /* select the next */
-    mWave->mChunks[mSelectionEnd].setAsSelectionEnd( true );
-
-    mNull = false;
-}
-
-
-const cinder::Color Wave::CURSOR_CLR = Color(1.f, 1.f, 1.f);
 
 

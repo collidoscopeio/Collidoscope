@@ -43,8 +43,8 @@ class Chunk
 
 public:
 
-    const static float kWidth;
-    const static float kHalfWidth;
+    static constexpr float kWidth = 7.0f;
+    static constexpr float kHalfWidth = kWidth * 0.5f;
 
     /**
      * Constructor, takes as argument the index of this chunk in the wave that contains it
@@ -72,9 +72,7 @@ public:
      * Reset this chunks. When a chunk is reset, it starts shrinking until it disappears or setTop/setBottom are called again
      *
      */ 
-    void reset(){
-        mResetting = true;
-    }
+    void reset(){  mResetting = true; }
 
     /**
      * Called in the graphic loop. It update this chunk. 
@@ -108,8 +106,8 @@ public:
 
 private:
 
-    float mAudioTop;
-    float mAudioBottom;
+    float mAudioTop = 0.0f;
+    float mAudioBottom = 0.0f;
 
     float mX;
 

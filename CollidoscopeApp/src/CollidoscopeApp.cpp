@@ -1,10 +1,10 @@
 /*
 
- Copyright (C) 2016  Queen Mary University of London 
+ Copyright (C) 2016  Queen Mary University of London
  Author: Fiore Martin
 
  This file is part of Collidoscope.
- 
+
  Collidoscope is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
@@ -42,440 +42,444 @@ using namespace ci::app;
 using namespace std;
 
 
-class CollidoscopeApp : public App {
-  public:
+class CollidoscopeApp : public App
+{
+public:
 
-    void setup() override;
-    void setupGraphics();
+  void setup() override;
+  void setupGraphics();
 
-    /** Receives MIDI command messages from MIDI thread */
-    void receiveCommands();
-    /** Prints command line usage */
-    void usage();
+  /** Receives MIDI command messages from MIDI thread */
+  void readMidiMessages();
 
-    void keyDown( KeyEvent event ) override;
-    void update() override;
-    void draw() override;
-    void resize() override;
+  void keyDown(KeyEvent event) override;
+  void update() override;
+  void draw() override;
+  void resize() override;
 
-    Config mConfig;
-    collidoscope::MIDI mMIDI;
-    AudioEngine mAudioEngine;
-    
-    array< shared_ptr< Wave >, NUM_WAVES > mWaves;
-    array< shared_ptr< DrawInfo >, NUM_WAVES > mDrawInfos;
-    array< shared_ptr< Oscilloscope >, NUM_WAVES > mOscilloscopes;
-    // buffer to read the WAVE_* messages as a new wave gets recorded 
-    array< RecordWaveMsg*, NUM_WAVES> mRecordWaveMessageBuffers;
-    //buffer to read the TRIGGER_* messages as the pgranulars play
-    array< vector< CursorTriggerMsg >, NUM_WAVES > mCursorTriggerMessagesBuffers;
+  Config mConfig;
+  collidoscope::MIDI mMIDI;
+  AudioEngine mAudioEngine;
+  size_t mSamplesPerChunk;
 
-    double mSecondsPerChunk;
+  array< shared_ptr< Wave >, NUM_WAVES > mWaves;
+  array< shared_ptr< DrawInfo >, NUM_WAVES > mDrawInfos;
+  array< shared_ptr< Oscilloscope >, NUM_WAVES > mOscilloscopes;
+  // vector to read the WAVE_* messages as a new wave gets recorded 
+  vector< RecordWaveMsg > mWaveRecordingMessages;
 
-    ~CollidoscopeApp();
-
+  //buffer to read the TRIGGER_* messages as the pgranulars play
+  vector< CursorTriggerMsg > mCursorTriggerMessages;
 };
 
 
 void CollidoscopeApp::setup()
 {
-    hideCursor();
-    /* setup is logged: setup steps and errors */
-    
-    /*try {
-        mConfig.loadFromFile( "./collidoscope_config.xml" );
-    }
-    catch ( const Exception &e ){
-        logError( string("Exception loading config from file:") + e.what() );
-    }*/
+  static_assert(NUM_WAVES == 1 || NUM_WAVES == 2, "Either one or two waves");
 
-    // setup buffers to read messages from audio thread 
-    for ( size_t i = 0; i < NUM_WAVES; i++ ){
-        mRecordWaveMessageBuffers[i] = new RecordWaveMsg[mConfig.getNumChunks()];
-        mCursorTriggerMessagesBuffers[i].reserve( mConfig.getCursorTriggerMessageBufSize() );
-    }
+  //hideCursor();
+  /* setup is logged: setup steps and errors */
 
-    mAudioEngine.setup( mConfig );
+  /*try {
+      mConfig.loadFromFile( "./collidoscope_config.xml" );
+  }
+  catch ( const Exception &e ){
+      logError( string("Exception loading config from file:") + e.what() );
+  }*/
 
-    setupGraphics();
+  mAudioEngine.setup(mConfig);
 
-    mSecondsPerChunk = mConfig.getWaveLen() / mConfig.getNumChunks();
+  mSamplesPerChunk = mAudioEngine.getSampleRate() * Config::CHUNK_LEN_SECONDS;
 
-    try {
-        mMIDI.setup( mConfig );
-    }
-    catch ( const collidoscope::MIDIException &e ){
-        logError( string( "Exception opening MIDI input device: " ) + e.getMessage() );
-    }
+  setupGraphics();
 
+  mMIDI.setup(mConfig);
+  
 }
 
 void CollidoscopeApp::setupGraphics()
 {
-    for ( size_t i = 0; i < NUM_WAVES; i++ ){
-
-        mDrawInfos[i] = make_shared< DrawInfo >( i );
-        mWaves[i] = make_shared< Wave >(mConfig.getNumChunks(), mConfig.getWaveSelectionColor(i) );
-        mOscilloscopes[i] = make_shared< Oscilloscope >( mAudioEngine.getAudioOutputBuffer( i ).getNumFrames() / mConfig.getOscilloscopeNumPointsDivider() );
-
-    }
+  for (size_t waveIdx = 0; waveIdx < NUM_WAVES; waveIdx++)
+  {
+    mDrawInfos[waveIdx] = make_shared< DrawInfo >(waveIdx);
+    mWaves[waveIdx] = make_shared< Wave >(mConfig.getWaveSelectionColor(waveIdx));
+    mOscilloscopes[waveIdx] = make_shared< Oscilloscope >(mAudioEngine.getAudioOutputBufferRef(waveIdx).getNumFrames() / Config::OSCILLOSCOPE_POINTS_STRIDE);
+  }
 }
 
-void CollidoscopeApp::keyDown( KeyEvent event )
+void CollidoscopeApp::keyDown(KeyEvent event)
 {
-    char c = event.getChar();
+  char c = event.getChar();
 
-    const size_t waveIdx = 0;
+  const size_t waveIdx = 0;
 
-    switch (c){
-    case 'r' : 
-        mAudioEngine.record( waveIdx );
-        break;
+  switch (c) 
+  {
+  case 'r':
+  {
+    mAudioEngine.record(waveIdx);
+    break;
+  }
 
-    case 'w': {
+  case 'w': 
+  {
+    mWaves[waveIdx]->setSelectionSize(mWaves[waveIdx]->getSelectionSize() + 1);
 
-        mWaves[waveIdx]->getSelection().setSize(mWaves[waveIdx]->getSelection().getSize() + 1);
+    size_t numSelectionChunks = mWaves[waveIdx]->getSelectionSize();
+    // how many samples in one selection ?
+    size_t selectionSize = numSelectionChunks * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS);
 
-        size_t numSelectionChunks = mWaves[waveIdx]->getSelection().getSize();
-        // how many samples in one selection ?
-        size_t selectionSize = numSelectionChunks * (mConfig.getWaveLen() * mAudioEngine.getSampleRate() / mConfig.getNumChunks());
+    mAudioEngine.setSelectionSize(waveIdx, selectionSize);
+    break;
+  };
 
-        mAudioEngine.setSelectionSize(waveIdx, selectionSize);
-    };
-        break;
+  case 's': 
+  {
+    mWaves[waveIdx]->setSelectionSize(mWaves[waveIdx]->getSelectionSize() - 1);
 
-    case 's': {
+    size_t selectionSize = mWaves[waveIdx]->getSelectionSize() * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS);
+    mAudioEngine.setSelectionSize(waveIdx, selectionSize);
+    break;
+  };
 
-        mWaves[waveIdx]->getSelection().setSize( mWaves[waveIdx]->getSelection().getSize() - 1 );
+  case 'd': 
+  {
 
-        size_t selectionSize = mWaves[waveIdx]->getSelection().getSize() *(mConfig.getWaveLen() * mAudioEngine.getSampleRate() / mConfig.getNumChunks());
-        mAudioEngine.setSelectionSize( waveIdx, selectionSize );
-    };
-        break;
+    size_t selectionStart = mWaves[waveIdx]->getSelectionStart();
+    mWaves[waveIdx]->setSelectionStart(selectionStart + 1);
 
-    case 'd': {
+    selectionStart = mWaves[waveIdx]->getSelectionStart();
+    mAudioEngine.setSelectionStart(waveIdx, selectionStart * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
+    break;
+  };
 
-        size_t selectionStart = mWaves[waveIdx]->getSelection().getStart();
-        mWaves[waveIdx]->getSelection().setStart( selectionStart + 1 );
+  case 'a': 
+  {
+    size_t selectionStart = mWaves[waveIdx]->getSelectionStart();
 
-        selectionStart = mWaves[waveIdx]->getSelection().getStart();
-        mAudioEngine.setSelectionStart( waveIdx, selectionStart * (mConfig.getWaveLen() * mAudioEngine.getSampleRate() / mConfig.getNumChunks()) );
-    };
+    if (selectionStart == 0)
+      return;
 
-        break;
+    mWaves[waveIdx]->setSelectionStart(selectionStart - 1);
 
-    case 'a': {
-        size_t selectionStart = mWaves[waveIdx]->getSelection().getStart();
-        
-        if ( selectionStart == 0 )
-            return;
+    selectionStart = mWaves[waveIdx]->getSelectionStart();
 
-        mWaves[waveIdx]->getSelection().setStart( selectionStart - 1 );
+    mAudioEngine.setSelectionStart(waveIdx, selectionStart * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
+    break;
+  };
 
-        selectionStart = mWaves[waveIdx]->getSelection().getStart();
+  case 'f':
+  {
+    setFullScreen(!isFullScreen());
+    break;
+  }
 
-        mAudioEngine.setSelectionStart( waveIdx, selectionStart * (mConfig.getWaveLen() * mAudioEngine.getSampleRate() / mConfig.getNumChunks()) );
-    };
-        break;
+  case ' ': 
+  {
+    static bool isOn = false;
+    isOn = !isOn;
+    if (isOn) 
+      mAudioEngine.loopOn(waveIdx);
+    else 
+      mAudioEngine.loopOff(waveIdx);
+  };
+            break;
 
-    case 'f':
-        setFullScreen( !isFullScreen() );
-        break;
+  case '9': 
+  {
+    int c = mWaves[waveIdx]->getParticleRadiusCoeff();
+    if (c == 1)
+      return;
+    else
+      c -= 1;
 
-    case ' ': { 
-        static bool isOn = false;
-        isOn = !isOn;
-        if ( isOn ){
-            mAudioEngine.loopOn( waveIdx );
-        }
-        else{
-            mAudioEngine.loopOff( waveIdx );
-        }
-    };
-        break;
+    mAudioEngine.setGrainDurationCoeff(waveIdx, c);
+    mWaves[waveIdx]->setParticleRadiusCoeff(float(c));
+    break;
+  }; 
 
-    case '9': {
-        int c = mWaves[waveIdx]->getSelection().getParticleSpread();
-        if ( c == 1 )
-            return;
-        else
-            c -= 1;
+  case '0': 
+  {
+    int c = mWaves[waveIdx]->getParticleRadiusCoeff();
+    
+    if (c == int(Config::MAX_DURATION_COEFF))
+      return;
+    else
+      c += 1;
 
-        mAudioEngine.setGrainDurationCoeff( waveIdx, c );
-        mWaves[waveIdx]->getSelection().setParticleSpread( float( c ) );
+    mAudioEngine.setGrainDurationCoeff(waveIdx, c);
+    mWaves[waveIdx]->setParticleRadiusCoeff(float(c));
 
-    }; break;
-
-    case '0': {
-        int c = mWaves[waveIdx]->getSelection().getParticleSpread();
-        if ( c == 8 )
-            return;
-        else
-            c += 1;
-
-        mAudioEngine.setGrainDurationCoeff( waveIdx, c );
-        mWaves[waveIdx]->getSelection().setParticleSpread( float( c ) );
-    }; break;
-    }
+    break;
+  };
+  }
 
 }
 
 void CollidoscopeApp::update()
 {
-    // check incoming commands 
-    receiveCommands();
+  // check incoming MIDI messages  
+  readMidiMessages();
 
-    // check new wave chunks from recorder buffer 
-    for ( size_t i = 0; i < NUM_WAVES; i++ ){
-        size_t availableRead = mAudioEngine.getRecordWaveAvailable( i );
-        mAudioEngine.readRecordWave( i, mRecordWaveMessageBuffers[i], availableRead );
+  // check new wave chunks from recorder buffer 
+  for (size_t waveIdx = 0; waveIdx < NUM_WAVES; waveIdx++)
+  {
+    mAudioEngine.getWaveRecordingMessages(waveIdx, mWaveRecordingMessages);
 
-        for ( size_t msgIndex = 0; msgIndex < availableRead; msgIndex++ ){
-            const RecordWaveMsg & msg = mRecordWaveMessageBuffers[i][msgIndex];
+    for (size_t msgIndex = 0; msgIndex < mWaveRecordingMessages.size(); msgIndex++)
+    {
+      const RecordWaveMsg& msg = mWaveRecordingMessages[msgIndex];
 
-            if ( msg.cmd == Command::WAVE_CHUNK ){
-                mWaves[i]->setChunk( msg.index, msg.arg1, msg.arg2 );
-            }
-            else if ( msg.cmd == Command::WAVE_START ){
-                mWaves[i]->reset( true ); // reset only chunks but leave selection 
-            }
-            
-        }
+      if (msg.cmd == Command::WAVE_CHUNK)
+      {
+        mWaves[waveIdx]->setChunk(msg.index, msg.arg1, msg.arg2);
+      }
+      else if (msg.cmd == Command::WAVE_START)
+      {
+        mWaves[waveIdx]->reset(*mDrawInfos[waveIdx]);
+      }
+
     }
+  }
 
-    // check if new cursors have been triggered 
-    for ( size_t i = 0; i < NUM_WAVES; i++ ){
-        
-        mAudioEngine.checkCursorTriggers( i, mCursorTriggerMessagesBuffers[i] );
-        for ( auto & trigger : mCursorTriggerMessagesBuffers[i] ){
-            const int nodeID = trigger.synthID;
+  // check if new cursors have been triggered 
+  for (size_t i = 0; i < NUM_WAVES; i++)
+  {
 
-            switch ( trigger.cmd ){
+    mAudioEngine.getCursorTriggers(i, mCursorTriggerMessages);
 
-            case Command::TRIGGER_UPDATE: {
-                mWaves[i]->setCursorPos( nodeID, mWaves[i]->getSelection().getStart(), *mDrawInfos[i] );
-            };
-                break;
+    for (CursorTriggerMsg& trigger : mCursorTriggerMessages)
+    {
+      const int nodeID = trigger.synthID;
 
-            case Command::TRIGGER_END: {
-                mWaves[i]->removeCursor( nodeID );
-            };
-                break;
+      switch (trigger.type)
+      {
 
-            }
-            
-        }
-        mCursorTriggerMessagesBuffers[i].clear();
+      case CursorTriggerMsg::Type::NEW_TRIGGER:
+      {
+        const size_t durationInChunks = trigger.durationInSamples / mSamplesPerChunk;
+        mWaves[i]->addCursor(nodeID, *mDrawInfos[i], durationInChunks);
+        break;
+      };
+
+      case CursorTriggerMsg::Type::TRIGGER_END:
+      {
+        mWaves[i]->removeCursors(nodeID);
+        break;
+      };
+
+      }
+
     }
+  }
 
-    // update cursors 
-    for ( size_t i = 0; i < NUM_WAVES; i++ ){
-        mWaves[i]->update( mSecondsPerChunk, *mDrawInfos[i] );
+  // update cursors 
+  for (size_t i = 0; i < NUM_WAVES; i++)
+  {
+    mWaves[i]->update(*mDrawInfos[i]);
+  }
+
+  // update oscilloscope 
+
+  for (size_t i = 0; i < NUM_WAVES; i++)
+  {
+    const audio::Buffer &audioOutBuffer = mAudioEngine.getAudioOutputBufferRef(i);
+
+    for (size_t pointIdx = 0; pointIdx < mOscilloscopes[i]->getNumPoints(); pointIdx++)
+    {
+      mOscilloscopes[i]->setPoint(pointIdx, audioOutBuffer.getData()[pointIdx], *mDrawInfos[i]);
     }
-    
-    // update oscilloscope 
+  }
 
-    for ( size_t i = 0; i < NUM_WAVES; i++ ){
-        const audio::Buffer &audioOutBuffer = mAudioEngine.getAudioOutputBuffer( i );
-        // one oscilloscope sample 
-
-        for ( size_t j = 0; j < mOscilloscopes[i]->getNumPoints(); j++ ){
-            mOscilloscopes[i]->setPoint( j, audioOutBuffer.getData()[j], *mDrawInfos[i] );
-        }
-    }
-
-    
-    
 }
 
 void CollidoscopeApp::draw()
 {
-    gl::clear( Color( 0, 0, 0 ) );
+  gl::clear(Color(0, 0, 0));
 
-    for ( int i = 0; i < NUM_WAVES; i++ ){
-        if ( i == 1 ){
-            /* for the upper wave flip the x over the center of the screen which is
-            the composition of rotate on the y-axis and translate by -screenwidth*/
-            gl::pushModelMatrix();
-            gl::rotate( float(M_PI), ci::vec3( 0, 1, 0 ) );
-            gl::translate( float( -getWindowWidth() ), 0.0f );
-            mOscilloscopes[i]->draw();
-            mWaves[i]->draw( *mDrawInfos[i] );
-            gl::popModelMatrix();
-        }
-        else{
+  // First Wave
+  mOscilloscopes[0]->draw();
+  mWaves[0]->draw(*mDrawInfos[0]);
 
-            mOscilloscopes[i]->draw();
-            mWaves[i]->draw( *mDrawInfos[i] );
-        }
-    }
+  // Second Wave
+  if (NUM_WAVES == 2)
+  {
+    /* for the upper wave flip the x over the center of the screen which is
+     the composition of rotate on the y-axis and translate by -screenwidth*/
+    gl::pushModelMatrix();
+    gl::rotate(float(M_PI), ci::vec3(0, 1, 0));
+    gl::translate(float(-getWindowWidth()), 0.0f);
+    mOscilloscopes[1]->draw();
+    mWaves[1]->draw(*mDrawInfos[1]);
+    gl::popModelMatrix();
+  }
 }
 
 void CollidoscopeApp::resize()
 {
-    App::resize();
-    
-    for ( int i = 0; i < NUM_WAVES; i++ ){
-        // reset the drawing information with the new windows size and same shrink factor  
-        mDrawInfos[i]->reset( getWindow()->getBounds(), 3.0f / 5.0f );
+  App::resize();
 
-        /* reset the oscilloscope points to zero */
-        for ( int j = 0; j < mOscilloscopes[i]->getNumPoints(); j++ ){
-            mOscilloscopes[i]->setPoint(j, 0.0f, *mDrawInfos[i] );
-        }
+  for (int i = 0; i < NUM_WAVES; i++)
+  {
+    // reset the drawing information with the new windows size and same shrink factor  
+    mDrawInfos[i]->reset(getWindow()->getBounds());
+
+    /* reset the oscilloscope points to zero */
+    for (int j = 0; j < mOscilloscopes[i]->getNumPoints(); j++)
+    {
+      mOscilloscopes[i]->setPoint(j, 0.0f, *mDrawInfos[i]);
     }
+  }
 }
 
 
 
-void CollidoscopeApp::receiveCommands()
+void CollidoscopeApp::readMidiMessages()
 {
-    // check new midi messages 
-    static std::vector<collidoscope::MIDIMessage> midiMessages;
-    mMIDI.checkMessages( midiMessages );
+  // check new midi messages 
+  static std::vector<collidoscope::MIDIMessage> midiMessages{};
+  mMIDI.getMidiMessages(midiMessages);
 
+  for (auto &m : midiMessages) 
+  {
 
-    for ( auto &m : midiMessages ){
-        
-        const size_t waveIdx = mConfig.getWaveForMIDIChannel( m.getChannel() );
-        if ( waveIdx >= NUM_WAVES )
-            continue;
+    const size_t waveIdx = mConfig.getWaveForMIDIChannel(m.getChannel());
+    if (waveIdx >= NUM_WAVES)
+      continue;
 
-        if ( m.getVoice() == collidoscope::MIDIMessage::Voice::eNoteOn ){
-            int midiNote = m.getData_1();
-	    unsigned int velocity = m.getData_2();
-	    if(velocity == 0){
-		    mAudioEngine.noteOff( waveIdx, midiNote );
-	    }else{
-		    mAudioEngine.noteOn( waveIdx, midiNote );
-	    }
+    if (m.getVoice() == collidoscope::MIDIMessage::Voice::eNoteOn) 
+    {
+      int midiNote = m.getData_1();
+      unsigned int velocity = m.getData_2();
 
-        }
-        else if ( m.getVoice() == collidoscope::MIDIMessage::Voice::eNoteOff ){
-            int midiNote = m.getData_1();
-            mAudioEngine.noteOff( waveIdx, midiNote );
-        } 
-        else if ( m.getVoice() == collidoscope::MIDIMessage::Voice::ePitchBend ){
-            const uint16_t MSB = m.getData_2() << 7;
-            uint16_t value = m.getData_1(); // LSB 
-
-            value |= MSB;
-            
-
-            // value ranges from 0 to 149. check boundaries in case sensor gives bad values 
-            if ( value > 149 ){ // FIXME can use wave.size() 
-                continue;
-            }
-
-            size_t startChunk = value;
-
-            const size_t selectionSizeBeforeStartUpdate = mWaves[waveIdx]->getSelection().getSize();
-            mWaves[waveIdx]->getSelection().setStart( startChunk );
-
-            mAudioEngine.setSelectionStart( waveIdx, startChunk * (mConfig.getWaveLen() * mAudioEngine.getSampleRate() / mConfig.getNumChunks()) );
-            
-            const size_t newSelectionSize = mWaves[waveIdx]->getSelection().getSize();
-            if ( selectionSizeBeforeStartUpdate != newSelectionSize ){
-                mAudioEngine.setSelectionSize( waveIdx, newSelectionSize * (mConfig.getWaveLen() * mAudioEngine.getSampleRate() / mConfig.getNumChunks()) );
-            }
-
-
-        }
-        else if ( m.getVoice() == collidoscope::MIDIMessage::Voice::eControlChange ){
-
-            switch ( m.getData_1() ){ //controller number 
-            case 1: { // selection size 
-                const size_t midiVal = m.getData_2();
-                size_t numSelectionChunks = ci::lmap<size_t>( midiVal, 0, 127, 1, mConfig.getMaxSelectionNumChunks() );
-
-                mWaves[waveIdx]->getSelection().setSize( numSelectionChunks );
-
-                // how many samples in one selection ?
-                size_t selectionSize = mWaves[waveIdx]->getSelection().getSize() * (mConfig.getWaveLen() * mAudioEngine.getSampleRate() / mConfig.getNumChunks());
-                mAudioEngine.setSelectionSize( waveIdx, selectionSize );
-
-            };
-                break;
-
-            case 4: { // loop on off
-                unsigned char midiVal = m.getData_2();
-
-                if ( midiVal > 0 )
-                    mAudioEngine.loopOn( waveIdx );
-                else
-                    mAudioEngine.loopOff( waveIdx );
-            };
-                break;
-
-            case 5: // trigger record
-                mAudioEngine.record( waveIdx );
-                break;
-
-            case 2: { // duration 
-                const double midiVal = m.getData_2(); // 0-127
-                const double coeff = ci::lmap<double>( midiVal, 0.0, 127, 1.0, mConfig.getMaxGrainDurationCoeff() );
-                mAudioEngine.setGrainDurationCoeff( waveIdx, coeff );
-                mWaves[waveIdx]->getSelection().setParticleSpread( float( coeff ) );
-            };
-                break;
-
-            case 7: { // filter 
-                const double midiVal = m.getData_2(); // 0-127
-                const double minCutoff = mConfig.getMinFilterCutoffFreq();
-                const double maxCutoff = mConfig.getMaxFilterCutoffFreq();
-                const double cutoff = pow( maxCutoff / 200., midiVal / 127.0 ) * minCutoff;
-                mAudioEngine.setFilterCutoff( waveIdx, cutoff );
-                const float alpha = ci::lmap<double>( midiVal, 0.0f, 127.0f, 0.f, 1.f );
-                mWaves[waveIdx]->setselectionAlpha( alpha );
-            };
-                break;
-
-
-                
-            }
-        }
+      if (velocity == 0) 
+      {
+        mAudioEngine.noteOff(waveIdx, midiNote);
+      }
+      else 
+      {
+        mAudioEngine.noteOn(waveIdx, midiNote);
+      }
     }
+    else if (m.getVoice() == collidoscope::MIDIMessage::Voice::eNoteOff) 
+    {
+      int midiNote = m.getData_1();
+      mAudioEngine.noteOff(waveIdx, midiNote);
+    }
+    else if (m.getVoice() == collidoscope::MIDIMessage::Voice::ePitchBend) 
+    {
+      const uint16_t MSB = m.getData_2() << 7;
+      uint16_t value = m.getData_1(); // LSB 
 
-    midiMessages.clear();
+      value |= MSB;
+
+      // value ranges from 0 to 149. check boundaries in case sensor gives bad values 
+      if (value >= Config::NUM_CHUNKS) 
+        continue;
+
+      size_t startChunk = value;
+
+      const size_t selectionSizeBeforeStartUpdate = mWaves[waveIdx]->getSelectionSize();
+      mWaves[waveIdx]->setSelectionStart(startChunk);
+
+      mAudioEngine.setSelectionStart(waveIdx, startChunk * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
+
+      const size_t newSelectionSize = mWaves[waveIdx]->getSelectionSize();
+      if (selectionSizeBeforeStartUpdate != newSelectionSize) 
+      {
+        mAudioEngine.setSelectionSize(waveIdx, newSelectionSize * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
+      }
+    }
+    else if (m.getVoice() == collidoscope::MIDIMessage::Voice::eControlChange) 
+    {
+      switch (m.getData_1()) //controller number 
+ 
+      { 
+        case 1: // selection size 
+        { 
+          const size_t midiVal = m.getData_2();
+          size_t numSelectionChunks = ci::lmap<size_t>(midiVal, 0, 127, 1, mConfig.getMaxSelectionNumChunks());
+
+          mWaves[waveIdx]->setSelectionSize(numSelectionChunks);
+
+          // how many samples in one selection ?
+          size_t selectionSize = mWaves[waveIdx]->getSelectionSize() * 
+                                (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS);
+          mAudioEngine.setSelectionSize(waveIdx, selectionSize);
+
+          break;
+        };
+
+        case 4: // loop on off 
+        { 
+          unsigned char midiVal = m.getData_2();
+
+          if (midiVal > 0)
+            mAudioEngine.loopOn(waveIdx);
+          else
+            mAudioEngine.loopOff(waveIdx);
+          break;
+        };
+
+        case 5: // trigger record
+        {
+          mAudioEngine.record(waveIdx);
+          break;
+        };
+
+        case 2: // duration  
+        { 
+          const float midiVal = m.getData_2(); // 0-127
+          const float coeff = ci::lmap<float>(midiVal, 0.0f, 127.0f, 1.0f, Config::MAX_DURATION_COEFF);
+          mAudioEngine.setGrainDurationCoeff(waveIdx, coeff);
+          mWaves[waveIdx]->setParticleRadiusCoeff(float(coeff));
+        };
+                break;
+
+        case 7: // filter  
+        { 
+          const double midiVal = m.getData_2(); // 0-127
+          const double minCutoff = mConfig.getMinFilterCutoffFreq();
+          const double maxCutoff = mConfig.getMaxFilterCutoffFreq();
+          const double cutoff = pow(maxCutoff / 200., midiVal / 127.0) * minCutoff;
+          mAudioEngine.setFilterCutoff(waveIdx, cutoff);
+          const float alpha = ci::lmap<double>(midiVal, 0.0f, 127.0f, Config::MIN_ALPHA, Config::MAX_ALPHA);
+          mWaves[waveIdx]->setselectionAlpha(alpha);
+          break;
+        };
+      }
+    }
+  }
+
+  midiMessages.clear();
 }
 
 
 
-CollidoscopeApp::~CollidoscopeApp()
+CINDER_APP(CollidoscopeApp, RendererGl, [](App::Settings *settings) 
 {
-    for ( int chan = 0; chan < NUM_WAVES; chan++ ){
-        /* delete the array for wave messages from audio thread */
-        delete[] mRecordWaveMessageBuffers[chan];
-    }
-}
+  const std::vector< string > args = settings->getCommandLineArgs();
 
+  int width = 0;
+  int height = 0;
 
-CINDER_APP( CollidoscopeApp, RendererGl, [] ( App::Settings *settings) {
+  if (args.size() == 3)
+  {
+    width = std::stoi(args[1]);
+    height = std::stoi(args[2]);
+  }
+  else
+  {
+    console() << "Error: invalid arguments" << std::endl;
+    console() << "Usage: ./CollidoscopeApp window_width window_height" << std::endl;
+    console() << "For example: ./CollidoscopeApp 1024 768 " << std::endl;
 
-    const std::vector< string > args = settings->getCommandLineArgs();
+    width = 1024;
+    height = 768;
+    settings->setShouldQuit(true);
+  }
 
-    int width = 0;
-    int height = 0;
-
-    try {
-        if( args.size() != 3 )
-            throw std::invalid_argument("");
-
-        width  = std::stoi( args[1] );
-        height = std::stoi( args[2] );
-
-    }
-    catch( std::invalid_argument & e ){
-        console() << "Error: invalid arguments" << std::endl;
-        console() << "Usage: ./CollidoscopeApp window_width window_height" << std::endl;  
-        console() << "For example: ./CollidoscopeApp 1024 768 " << std::endl;  
-
-        settings->setShouldQuit( true );
-        return;
-    }
-
-    settings->setWindowSize( width, height );
-    settings->setMultiTouchEnabled( false );
-    settings->disableFrameRate();
-
-} )
+  settings->setWindowSize(width, height);
+  settings->setMultiTouchEnabled(false);
+  settings->disableFrameRate();
+})

@@ -1,10 +1,10 @@
 /*
 
- Copyright (C) 2016  Queen Mary University of London 
+ Copyright (C) 2016  Queen Mary University of London
  Author: Fiore Martin
 
  This file is part of Collidoscope.
- 
+
  Collidoscope is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
@@ -25,118 +25,112 @@
 #include <array>
 #include "cinder/Color.h"
 #include "cinder/Xml.h"
+#include "cinder/audio/dsp/RingBuffer.h"
 
+
+template<typename T> 
+using RingBuf = cinder::audio::dsp::RingBufferT<T>;
 
 /**
  * Configuration class gathers in one place all the values recided at runtime
  *
  * Reading the configuration from an XML file is partially implemented but not used at the moment
  *
- */ 
+ */
 class Config
 {
 public:
 
-    Config();
+  static constexpr size_t NUM_CHUNKS = 128;
+  static constexpr size_t CURSOR_TRIGGER_RINGBUF_LEN = 128;
+  static constexpr size_t NOTE_RINGBUF_LEN = 16;
+  static constexpr float MAX_DURATION_COEFF = 8.0f;
+  static constexpr size_t MAX_VOICES = 6;
+  static constexpr float WAVE_LEN_SECONDS = 2.0f;
+  static constexpr float CHUNK_LEN_SECONDS = WAVE_LEN_SECONDS / NUM_CHUNKS;
+  static constexpr float MIN_ALPHA = 0.5f;
+  static constexpr float MAX_ALPHA = 1.0f;
+  static constexpr float PARTICLE_RADIUS_INCREMENT = 4.0f;
 
-    // no copies 
-    Config( const Config &copy ) = delete;
-    Config & operator=(const Config &copy) = delete;
 
-    /* load values for internal field from configuration file. Throws ci::Exception */
-    void loadFromFile( std::string&& path );
+  /**
+   * The oscilloscope represents the audio output buffer graphically. However it doesn't need to be as refined as the
+   * audio wave and it's downsampled by the stride
+   */
+  static constexpr size_t OSCILLOSCOPE_POINTS_STRIDE = 4;
 
-    std::string getInputDeviceKey() const
-    {
-        return mAudioInputDeviceKey; 
+  Config();
+
+  // no copies 
+  Config(const Config &copy) = delete;
+  Config & operator=(const Config &copy) = delete;
+
+  /* load values for internal field from configuration file. Throws ci::Exception */
+  void loadFromFile(std::string&& path);
+
+  std::string getInputDeviceKey() const
+  {
+    return mAudioInputDeviceKey;
+  }
+
+  /**
+   * Returns wave selection color
+   */
+  ci::Color getWaveSelectionColor(size_t waveIdx) const
+  {
+    if (waveIdx == 0) {
+      return cinder::Color(243.0f / 255.0f, 6.0f / 255.0f, 62.0f / 255.0f);
     }
-
-    /**
-     * Returns number of chunks in a wave 
-     */ 
-    std::size_t getNumChunks() const
-    {
-        return mNumChunks;
+    else {
+      return cinder::Color(255.0f / 255.0f, 204.0f / 255.0f, 0.0f / 255.0f);
     }
+  }
 
-    /** returns wave lenght in seconds */
-    double getWaveLen() const
-    {
-        return mWaveLen;
-    }
+  /**
+   * The size of the ring buffer used to trigger a visual cursor from the audio thread when a new grain is created
+   */
+  std::size_t getCursorTriggerMessageBufSize() const
+  {
+    return 512;
+  }
 
-    /**
-     * Returns wave selection color
-     */ 
-    ci::Color getWaveSelectionColor(size_t waveIdx) const
-    {
-        if (waveIdx == 0){
-            return cinder::Color(243.0f / 255.0f, 6.0f / 255.0f, 62.0f / 255.0f);
-        }
-        else{
-            return cinder::Color(255.0f / 255.0f, 204.0f / 255.0f, 0.0f / 255.0f);
-        }
-    }
+  /** returns the index of the wave associated to the MIDI channel passed as argument */
+  size_t getWaveForMIDIChannel(unsigned char channelIdx)
+  {
+    return channelIdx;
+  }
 
-    /**
-     * The size of the ring buffer used to trigger a visual cursor from the audio thread when a new grain is created
-     */ 
-    std::size_t getCursorTriggerMessageBufSize() const
-    {
-        return 512;
-    }
+  double getMaxFilterCutoffFreq() const
+  {
+    return 22050.;
+  }
 
-    /** returns the index of the wave associated to the MIDI channel passed as argument */
-    size_t getWaveForMIDIChannel( unsigned char channelIdx )
-    {
-        return channelIdx;
-    }
+  double getMinFilterCutoffFreq() const
+  {
+    return 200.;
+  }
 
-    double getMaxGrainDurationCoeff() const
-    {
-        return 8.0;
-    }
+  size_t getMaxKeyboardVoices() const
+  {
+    return 6;
+  }
 
-    double getMaxFilterCutoffFreq() const
-    {
-        return 22050.;
-    }
+  /**
+   * Returns the maximum size of a wave selection in number of chunks.
+   */
+  size_t getMaxSelectionNumChunks() const
+  {
+    return 37;
+  }
 
-    double getMinFilterCutoffFreq() const
-    {
-        return 200.;
-    }
-
-    size_t getMaxKeyboardVoices() const
-    {
-        return 6;
-    }
-
-    /**
-     * Returns the maximum size of a wave selection in number of chunks.
-     */ 
-    size_t getMaxSelectionNumChunks() const
-    {
-        return 37;
-    }
-
-    /**
-     * The value returned is used when creating the oscilloscope. 
-     * The oscilloscope represents the audio output buffer graphically. However it doesn't need to be as refined as the 
-     * audio wave and it's downsampled using the following formula :  (number of oscilloscope points) = (size of audio output buffer) / getOscilloscopeNumPointsDivider() 
-     */ 
-    size_t getOscilloscopeNumPointsDivider() const
-    {
-        return 4;
-    }
-
+  
 private:
 
-    void parseWave( const ci::XmlTree &wave, int id );
+  void parseWave(const ci::XmlTree &wave, int id);
 
-    std::string mAudioInputDeviceKey;
-    std::size_t mNumChunks;
-    double mWaveLen;
-    std::array< size_t, NUM_WAVES > mMidiChannels; 
+  std::string mAudioInputDeviceKey;
+  std::size_t mNumChunks;
+  double mWaveLen;
+  std::array< size_t, NUM_WAVES > mMidiChannels;
 
 };

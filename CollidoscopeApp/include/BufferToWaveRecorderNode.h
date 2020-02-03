@@ -51,11 +51,11 @@
 #include "cinder/audio/dsp/RingBuffer.h"
 #include "cinder/Filesystem.h"
 
+#include "Config.h"
 #include "Messages.h"
 
-typedef std::shared_ptr<class BufferToWaveRecorderNode> BufferToWaveRecorderNodeRef;
 
-typedef ci::audio::dsp::RingBufferT<RecordWaveMsg> RecordWaveMsgRingBuffer;
+typedef std::shared_ptr<class BufferToWaveRecorderNode> BufferToWaveRecorderNodeRef;
 
 /**
  * A \a Node in the audio graph of the Cinder audio library that records input in a buffer.
@@ -65,14 +65,15 @@ typedef ci::audio::dsp::RingBufferT<RecordWaveMsg> RecordWaveMsgRingBuffer;
  * The chunks values are stored in a ring buffer and fetched by the graphic thread to paint the wave as it gets recorded.
  *
  */
-class BufferToWaveRecorderNode : public ci::audio::SampleRecorderNode {
+class BufferToWaveRecorderNode : public ci::audio::SampleRecorderNode 
+{
 public:
 
     static const float kRampTime;
 
     //! Constructor. numChunks is the total number of chunks this biffer has to be borken down in. 
     //! numSeconds lenght of the buffer in seconds 
-    BufferToWaveRecorderNode( std::size_t numChunks, double numSeconds );
+    BufferToWaveRecorderNode( RingBuf<RecordWaveMsg>& waveRecordingRingBuf, double numSeconds );
 
     //! Starts recording. Resets the write position to zero (call disable() to pause recording).
     void start();
@@ -106,9 +107,6 @@ public:
     //! Returns the frame of the last buffer overrun or 0 if none since the last time this method was called. When this happens, it means the recorded buffer probably has skipped some frames.
     uint64_t getLastOverrun();
 
-    //! returns a reference to the ring buffer when the size values of the chunks is stored, when a new wave is recorder
-    RecordWaveMsgRingBuffer& getRingBuffer() { return mRingBuffer; }
-
     //!returns a pointer to the buffer where the audio is recorder. This is used by the PGranular to create the granular synthesis 
     ci::audio::Buffer* getRecorderBuffer() { return &mRecorderBuffer; }
 
@@ -124,16 +122,15 @@ protected:
 
     ci::audio::BufferDynamic        mRecorderBuffer;
     ci::audio::BufferDynamicRef     mCopiedBuffer;
-    std::atomic<uint64_t>   mLastOverrun;
+    std::atomic<uint64_t>   mLastOverrun = 0;
 
-    RecordWaveMsgRingBuffer mRingBuffer;
+    RingBuf<RecordWaveMsg>&  mWaveRecordingRingBuf;
 
-    const std::size_t mNumChunks;
     const double mNumSeconds;
     std::size_t mNumSamplesPerChunk;
-    std::atomic<std::size_t> mChunkIndex;
+    std::atomic<std::size_t> mChunkIndex = 0;
 
-    size_t mChunkSampleCounter;
+    size_t mChunkSampleCounter = 0;
     float mChunkMaxAudioVal;
     float mChunkMinAudioVal;
 

@@ -31,13 +31,9 @@
 #include <memory>
 
 #include "PGranular.h"
-#include "EnvASR.h"
+#include "Config.h"
 
 typedef std::shared_ptr<class PGranularNode> PGranularNodeRef;
-typedef ci::audio::dsp::RingBufferT<CursorTriggerMsg> CursorTriggerMsgRingBuffer;
-
-
-struct RandomGenerator;
 
 /*
 A node in the Cinder audio graph that holds PGranulars for loop and keyboard playing  
@@ -45,101 +41,60 @@ A node in the Cinder audio graph that holds PGranulars for loop and keyboard pla
 class PGranularNode : public ci::audio::Node
 {
 public:
-    static const size_t kMaxVoices = 6;
     static const int kNoMidiNote = -50;
 
-    explicit PGranularNode( ci::audio::Buffer *grainBuffer, CursorTriggerMsgRingBuffer &triggerRingBuffer );
-    ~PGranularNode();
+    explicit PGranularNode( ci::audio::Buffer *grainBuffer, RingBuf<CursorTriggerMsg>& triggerRingBuf, RingBuf<NoteMsg>& mNoteRingBuf );
 
     /** Set selection size in samples */
     void setSelectionSize( size_t size )
     {
-        mSelectionSize.set( size );
+        mSelectionSize.store( size );
     }
 
     /** Set selection start in samples */
     void setSelectionStart( size_t start )
     {
-        mSelectionStart.set( start );
+        mSelectionStart.store( start );
     }
 
-    void setGrainsDurationCoeff( double coeff )
+    void setGrainsDurationCoeff( float coeff )
     {
-        mGrainDurationCoeff.set( coeff );
+        mGrainDurationCoeff.store( coeff );
     }
-
-    /* PGranularNode passes itself as trigger callback in PGranular */
-    void operator()( char msgType, int ID );
-
-    ci::audio::dsp::RingBufferT<NoteMsg>& getNoteRingBuffer() { return mNoteMsgRingBufferPack.getBuffer(); }
 
 protected:
-    
-    void initialize()                           override;
+    void initialize() override;
 
-    void process( ci::audio::Buffer *buffer )   override;
+    void process( ci::audio::Buffer *buffer ) override;
 
 private:
-
-    // Wraps a std::atomic but get() returns a boost::optional that is set to a real value only when the atomic has changed. 
-    //  It is used to avoid calling PGranular setter methods with the same value at each audio callback.
-    template< typename T>
-    class LazyAtomic
-    {
-    public:
-        LazyAtomic( T val ) :
-            mAtomic( val ),
-            mPreviousVal( val )
-        {}
-
-        void set( T val )
-        {
-            mAtomic = val;
-        }
-
-        boost::optional<T> get()
-        {
-            const T val = mAtomic;
-            if ( val != mPreviousVal ){
-                mPreviousVal = val;
-                return val;
-            }
-            else{
-                return boost::none;
-            }
-        }
-
-    private:
-        std::atomic<T> mAtomic;
-        T mPreviousVal;
-    };
+    
+    void cursorCallback(collidoscope::PGranular<float>::TriggerType triggerType, int ID, size_t grainDuration);
 
     // creates or re-start a PGranular and sets the pitch according to the MIDI note passed as argument
     void handleNoteMsg( const NoteMsg &msg );
 
     // pointers to PGranular objects 
-    std::unique_ptr < collidoscope::PGranular<float, RandomGenerator, PGranularNode > > mPGranularLoop;
-    std::array<std::unique_ptr < collidoscope::PGranular<float, RandomGenerator, PGranularNode > >, kMaxVoices> mPGranularNotes;
-    // maps midi notes to pgranulars. When a noteOff is received makes sure the right PGranular is turned off
-    std::array<int, kMaxVoices> mMidiNotes;
+    using PGranularType = collidoscope::PGranular<float>;
+    std::unique_ptr<PGranularType> mPGranularLoop;
+    std::array<std::unique_ptr<PGranularType>, Config::MAX_VOICES> mPGranularNotes;
 
-    // pointer to the random generator struct passed over to PGranular 
-    std::unique_ptr< RandomGenerator > mRandomOffset;
-    
+    // maps midi notes to pgranulars. When a noteOff is received makes sure the right PGranular is turned off
+    std::array<int, Config::MAX_VOICES> mMidiNotes;
+
     // buffer containing the recorded audio, to pass to PGranular in initialize()
     ci::audio::Buffer *mGrainBuffer;
 
     ci::audio::BufferRef mTempBuffer;
 
-    CursorTriggerMsgRingBuffer &mTriggerRingBuffer;
-    RingBufferPack<NoteMsg> mNoteMsgRingBufferPack;
+    RingBuf<CursorTriggerMsg>& mTriggerRingBuf;
+    RingBuf<NoteMsg>& mNoteRingBuf;
 
-    LazyAtomic<size_t> mSelectionSize;
+    std::atomic<size_t> mSelectionSize = 0;
     
-    LazyAtomic<size_t> mSelectionStart;
+    std::atomic<size_t> mSelectionStart = 0;
     
-    LazyAtomic<double> mGrainDurationCoeff;
-
+    std::atomic<float> mGrainDurationCoeff = 1.0;
 
 };
 

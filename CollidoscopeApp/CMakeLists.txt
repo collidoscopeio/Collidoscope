@@ -16,7 +16,7 @@ set( SRC_FILES
     ${INC_DIR}/Chunk.h
     ${INC_DIR}/Config.h
     ${INC_DIR}/DrawInfo.h
-    ${INC_DIR}/EnvASR.h
+    ${INC_DIR}/Envelopes.h
     ${INC_DIR}/Log.h
     ${INC_DIR}/Messages.h
     ${INC_DIR}/MIDI.h
@@ -38,7 +38,6 @@ set( SRC_FILES
 	${SRC_DIR}/PGranularNode.cpp
 	${SRC_DIR}/RtMidi.cpp
 	${SRC_DIR}/Wave.cpp
-    ${SRC_DIR}/ParticleController.cpp
 )
 
 include( "${CINDER_PATH}/proj/cmake/modules/cinderMakeApp.cmake" )

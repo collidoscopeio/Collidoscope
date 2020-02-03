@@ -93,15 +93,15 @@ class MIDI
 
 public:
 
-    MIDI();
-    ~MIDI();
+  MIDI() = default;
+  ~MIDI();
 
     void setup( const Config& );
 
     /**
      * Check new incoming messages and stores them into the vector passed as argument by reference.
      */ 
-    void checkMessages( std::vector< MIDIMessage >&  );
+    void getMidiMessages( std::vector<MIDIMessage>&  );
 
 private:
 
@@ -111,7 +111,7 @@ private:
     // parse RtMidi messages and turns them into more readable collidoscope::MIDIMessages
     MIDIMessage parseRtMidiMessage( std::vector<unsigned char> *message );
 
-    // messages to pass to checkMessages caller 
+    // messages to pass to getMidiMessages caller 
     std::vector< MIDIMessage > mMIDIMessages;
     // use specific variables for pitch bend messages. Pitch bend messages are coming 
     // from the strip sensors that are very jerky and send a lot of values. So instead 

@@ -43,17 +43,10 @@ class AudioEngine
 {
 public:
 
-    AudioEngine();
-
-    ~AudioEngine();
-
-    // no copies
+    AudioEngine() = default;
     AudioEngine( const AudioEngine &copy ) = delete;
     AudioEngine & operator=(const AudioEngine &copy) = delete;
 
-    /**
-    * Set up of the audio engine. 
-    */
     void setup( const Config& Config );
 
     size_t getSampleRate();
@@ -68,54 +61,45 @@ public:
 
     void noteOff( size_t waveIdx, int note );
 
-    /**
-    * Returns the number of elements available to read in the wave ring buffer.
-    * The wave ring buffer is used to pass the size of the wave chunks from the audio thread to the graphic thread, 
-    * when a new wave is recorded.
-    */ 
-    size_t getRecordWaveAvailable( size_t index );
-    /**
-    * Called from the graphic thread. Reads \a count elements from the wave ring buffer into \a buffer.
-    * The wave ring buffer is used to pass the size of the wave chunks from the audio thread to the graphic thread, 
-    * when a new wave is recorded.
-    *
-    */
-    bool readRecordWave( size_t waveIdx, RecordWaveMsg* buffer, size_t count );
-
     void setSelectionSize( size_t waveIdx, size_t size );
 
     void setSelectionStart( size_t waveIdx, size_t start );
 
-    void setGrainDurationCoeff( size_t waveIdx, double coeff );
+    void setGrainDurationCoeff( size_t waveIdx, float coeff );
 
     void setFilterCutoff( size_t waveIdx, double cutoff );
 
-    void checkCursorTriggers( size_t waveIdx, std::vector<CursorTriggerMsg>& cursorTriggers );
+    void getCursorTriggers( size_t waveIdx, std::vector<CursorTriggerMsg>& cursorTriggers );
+
+    void getWaveRecordingMessages(size_t waveIdx, std::vector<RecordWaveMsg>& waveRecordingMessages);
 
     /**
-     * Returns a const reference to the audio output buffer. This is the buffer that is sent off to the audio interface at each audio cycle. 
+     * Returns a const reference to the audio output buffer. 
+     * This is the buffer that is sent off to the audio interface at each audio cycle. 
      * It is used in the graphic thread to draw the oscilloscope.
      */
-    const ci::audio::Buffer& getAudioOutputBuffer( size_t waveIdx ) const;
+    const ci::audio::Buffer& getAudioOutputBufferRef( size_t waveIdx ) const;
 
 
 private:
 
     // nodes for mic input 
-    std::array< ci::audio::ChannelRouterNodeRef, NUM_WAVES > mInputRouterNodes;
-    // nodes for recording audio input into buffer. Also sends chunks information through 
-    // non-blocking queue 
-    std::array< BufferToWaveRecorderNodeRef, NUM_WAVES > mBufferRecorderNodes;
+    std::array<ci::audio::ChannelRouterNodeRef, NUM_WAVES > mInputRouterNodes;
+    // nodes for recording audio input into buffer. Also sends chunks information through ring buffer
+    std::array<BufferToWaveRecorderNodeRef, NUM_WAVES > mBufferRecorderNodes;
     // pgranulars wrapped in a Cinder::Node 
-    std::array< PGranularNodeRef, NUM_WAVES > mPGranularNodes;
+    std::array<PGranularNodeRef, NUM_WAVES > mPGranularNodes;
 
 
-    std::array< ci::audio::ChannelRouterNodeRef, NUM_WAVES > mOutputRouterNodes;
+    std::array<ci::audio::ChannelRouterNodeRef, NUM_WAVES > mOutputRouterNodes;
     // nodes to get the audio buffer scoped in the oscilloscope 
-    std::array< ci::audio::MonitorNodeRef, NUM_WAVES > mOutputMonitorNodes;
+    std::array<ci::audio::MonitorNodeRef, NUM_WAVES > mOutputMonitorNodes;
     // nodes for lowpass filtering
-    std::array< cinder::audio::FilterLowPassNodeRef, NUM_WAVES> mLowPassFilterNodes;
+    std::array<cinder::audio::FilterLowPassNodeRef, NUM_WAVES> mLowPassFilterNodes;
 
-    std::array< std::unique_ptr< RingBufferPack<CursorTriggerMsg> >, NUM_WAVES > mCursorTriggerRingBufferPacks;
+    std::array<RingBuf<CursorTriggerMsg>, NUM_WAVES > mCursorTriggerRingBufs;
+    std::array<RingBuf<RecordWaveMsg>, NUM_WAVES > mWaveRecordingRingBufs;
+    std::array<RingBuf<NoteMsg>, NUM_WAVES > mNoteRingBufs;
+    
 
 };
