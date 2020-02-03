@@ -122,13 +122,13 @@ protected:
 
     ci::audio::BufferDynamic        mRecorderBuffer;
     ci::audio::BufferDynamicRef     mCopiedBuffer;
-    std::atomic<uint64_t>   mLastOverrun = 0;
+    std::atomic<uint64_t> mLastOverrun { 0 };
 
     RingBuf<RecordWaveMsg>&  mWaveRecordingRingBuf;
 
     const double mNumSeconds;
     std::size_t mNumSamplesPerChunk;
-    std::atomic<std::size_t> mChunkIndex = 0;
+    std::atomic<std::size_t> mChunkIndex { 0 };
 
     size_t mChunkSampleCounter = 0;
     float mChunkMaxAudioVal;

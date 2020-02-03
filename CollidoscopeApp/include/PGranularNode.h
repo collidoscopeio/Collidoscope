@@ -90,11 +90,11 @@ private:
     RingBuf<CursorTriggerMsg>& mTriggerRingBuf;
     RingBuf<NoteMsg>& mNoteRingBuf;
 
-    std::atomic<size_t> mSelectionSize = 0;
+    std::atomic<size_t> mSelectionSize { 0 };
     
-    std::atomic<size_t> mSelectionStart = 0;
+    std::atomic<size_t> mSelectionStart { 0 };
     
-    std::atomic<float> mGrainDurationCoeff = 1.0;
+    std::atomic<float> mGrainDurationCoeff { 1.0f };
 
 };
 
