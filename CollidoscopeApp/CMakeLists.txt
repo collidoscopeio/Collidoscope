@@ -43,7 +43,7 @@ set( SRC_FILES
 include( "${CINDER_PATH}/proj/cmake/modules/cinderMakeApp.cmake" )
 
 add_definitions(-DNUM_WAVES=2)
-#add_definitions(-DUSE_PARTICLES)
+add_definitions(-DUSE_PARTICLES)
 
 if(WIN32)
     add_definitions(-D__WINDOWS_MM__)

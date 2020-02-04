@@ -72,6 +72,28 @@ public:
 
     auto mesh = gl::VboMesh::create(mParticles.size(), GL_POINTS, { { particleLayout, mParticleVbo } });
 
+#if defined( CINDER_GL_ES )
+    auto glsl = gl::GlslProg::create( gl::GlslProg::Format()
+      .vertex( CI_GLSL( 100,
+        uniform mat4 ciModelViewProjection;
+        attribute vec4 ciPosition;
+
+        void main(void) 
+	{
+          gl_Position = ciModelViewProjection * ciPosition;
+          gl_PointSize = 1.0;
+        }
+      ))
+      .fragment( CI_GLSL( 100,
+        precision highp float;
+
+        void main(void) 
+	{
+          gl_FragColor = vec4(1);
+        }
+      ))
+    );
+#else
     auto glsl = gl::GlslProg::create(gl::GlslProg::Format()
       .vertex(CI_GLSL(150,
         uniform mat4 ciModelViewProjection;
@@ -82,16 +104,17 @@ public:
           gl_Position = ciModelViewProjection * ciPosition;
           gl_PointSize = 1.0;
         }
-    ))
-    .fragment(CI_GLSL(150,
+      ))
+      .fragment(CI_GLSL(150,
         out vec4 oColor;
 
-        void main(void) {
-          oColor = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+        void main(void) 
+	{
+          oColor = vec4(1.0f);
         }
-    ))
+      ))
     );
-
+#endif
     mParticleBatch = gl::Batch::create(mesh, glsl);
 
   }
@@ -149,6 +172,8 @@ private:
 /**
  * The ParticleController creates/updates/draws and destroys particles
  */
+
+#ifdef CINDER_GL_HAS_TRANSFORM_FEEDBACK
 template<>
 class ParticleController<PARTICLE_ENGINE_TYPE::TRANSFORM_FEEDBACK_PARTICLES>
 {
@@ -285,4 +310,6 @@ private:
   size_t mSourceIndex = 0;
   size_t mDestinationIndex = 1;
 };
+
+#endif
 
