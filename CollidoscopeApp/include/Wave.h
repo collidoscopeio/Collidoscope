@@ -53,7 +53,6 @@ typedef int SynthID;
  */
 class Wave : private cinder::Noncopyable
 {
-  friend class ParticleController;
 
   /**
   * A Cursor is the white thingy that loops through the selection when Collidoscope is played.
@@ -115,8 +114,13 @@ public:
 private:
 
 #ifdef USE_PARTICLES
-  ParticleController mParticleController{};
+#ifdef CINDER_GL_HAS_TRANSFORM_FEEDBACK
+  ParticleController<PARTICLE_ENGINE_TYPE::TRANSFORM_FEEDBACK_PARTICLES> mParticleController{};
+#else
+  ParticleController<PARTICLE_ENGINE_TYPE::CPU_RENDERED_PARTICLES> mParticleController{};
 #endif 
+#endif
+
 
   bool hasCursorAtChunk(int chunkIdx) const;
 

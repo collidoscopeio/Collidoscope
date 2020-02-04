@@ -23,16 +23,12 @@ void main()
   cloudCentre = iCloudCentre; // to carry the value over 
   position = iPosition + direction;
 
-  if (iDamping > uDamping) // stop all those with dumping bigger than current dumping 
+  if (iDamping > uDamping ||                                  // -> filters out some particle to make the cloud less dense when the sound is low pass filtered 
+      length(position - iCloudCentre) > uRadius - iLifeSpan)  // -> reset particle to cloud centre if it's gone beyond the cloud radius 
   {
     position = uCloudCentre;
     cloudCentre = uCloudCentre;
 
-  }
-  else if (length(position - iCloudCentre) > uRadius - iLifeSpan)
-  {
-    cloudCentre = uCloudCentre;
-    position = uCloudCentre;
   }
 
   damping = iDamping;

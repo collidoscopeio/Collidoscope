@@ -28,12 +28,129 @@
 #include "cinder/Rand.h"
 #include "cinder/app/App.h"
 
+enum class PARTICLE_ENGINE_TYPE : int 
+{
+  TRANSFORM_FEEDBACK_PARTICLES = 0,
+  CPU_RENDERED_PARTICLES = 1, 
+};
+
+template<PARTICLE_ENGINE_TYPE T>
+class ParticleController;
+
+template<>
+class ParticleController<PARTICLE_ENGINE_TYPE::CPU_RENDERED_PARTICLES>
+{
+  static const int kMaxParticles = 8000;
+  static constexpr float kMinDumping = 0.45f;
+  static constexpr float kMaxDumping = 1.0f;
+
+public:
+  ParticleController()
+  {
+
+    using namespace ci;
+
+    const vec2 cloudCentre{ ci::app::getWindowCenter() };
+
+    mParticles.assign(kMaxParticles, {});
+
+    for (int i = 0; i < mParticles.size(); ++i)
+    {	// assign starting values to particles.
+
+      auto &p = mParticles.at(i);
+      p.pos = cloudCentre;
+      p.cloudCentre = cloudCentre;
+      p.dir = ci::randVec2() * Rand::randFloat(1.0f, 5.0f);
+      p.damping = Rand::randFloat(kMinDumping, kMaxDumping);
+      p.lifeSpan = Rand::randFloat(0.0f, 100.0f);
+    }
+
+    mParticleVbo = gl::Vbo::create(GL_ARRAY_BUFFER, mParticles, GL_DYNAMIC_DRAW);
+
+    geom::BufferLayout particleLayout {};
+    particleLayout.append(geom::Attrib::POSITION, 2, sizeof(vec2), 0);
+
+    auto mesh = gl::VboMesh::create(mParticles.size(), GL_POINTS, { { particleLayout, mParticleVbo } });
+
+    auto glsl = gl::GlslProg::create(gl::GlslProg::Format()
+      .vertex(CI_GLSL(150,
+        uniform mat4 ciModelViewProjection;
+        in vec4 ciPosition;
+
+        void main(void) 
+        {
+          gl_Position = ciModelViewProjection * ciPosition;
+          gl_PointSize = 1.0;
+        }
+    ))
+    .fragment(CI_GLSL(150,
+        out vec4 oColor;
+
+        void main(void) {
+          oColor = vec4(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+    ))
+    );
+
+    mParticleBatch = gl::Batch::create(mesh, glsl);
+
+  }
+
+
+  void updateParticles(const ci::vec2& cloudCentre, float radius, float damping)
+  {
+
+    using namespace ci;
+
+    for (Particle& p : mParticles)
+    {
+      p.pos += p.dir;
+
+      
+      if (p.damping > damping ||                                     // -> filters out some particle to make the cloud less dense when the sound is low pass filtered 
+         ci::length(p.pos - p.cloudCentre) > radius - p.lifeSpan)    // -> reset particle to cloud centre if it's gone beyond the cloud radius 
+      {
+        p.cloudCentre = cloudCentre;
+        p.pos = cloudCentre;
+      }
+    }
+
+    // Copy particle data onto the GPU.
+    // Map the GPU memory and write over it.
+    void *gpuMem = mParticleVbo->mapReplace();
+    memcpy(gpuMem, mParticles.data(), mParticles.size() * sizeof(vec2));
+    mParticleVbo->unmap();
+  }
+
+  void draw()
+  {
+    mParticleBatch->draw();
+  }
+
+private:
+
+  struct Particle
+  {
+    ci::vec2 pos;
+    ci::vec2 dir;
+    ci::vec2 cloudCentre;
+    float lifeSpan;
+    float damping;
+  };
+
+  std::vector<Particle> mParticles;
+
+  ci::gl::VboRef mParticleVbo; 
+  ci::gl::BatchRef mParticleBatch;
+
+};
 
 
 /**
  * The ParticleController creates/updates/draws and destroys particles
  */
-class ParticleController 
+template<>
+class ParticleController<PARTICLE_ENGINE_TYPE::TRANSFORM_FEEDBACK_PARTICLES>
 {
   static const int kMaxParticles = 8000;
   static constexpr float kMinDumping = 0.45f;
@@ -114,9 +231,6 @@ public:
       .attribLocation("iDamping", 4));
   }
 
-  /**
-   * Updates position and age of the particles
-   */
   void updateParticles(const ci::vec2& cloudCentre, float radius, float damping)
   {
     using namespace ci;
@@ -144,9 +258,6 @@ public:
     std::swap(mSourceIndex, mDestinationIndex);
   }
 
-  /**
-   * Draws all the particles
-   */
   void draw()
   {
     using namespace ci;
