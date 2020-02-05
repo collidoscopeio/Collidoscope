@@ -29,15 +29,15 @@ set( SRC_FILES
     ${INC_DIR}/RtMidi.h
     ${INC_DIR}/Wave.h
     ${SRC_DIR}/CollidoscopeApp.cpp
-	${SRC_DIR}/AudioEngine.cpp
-	${SRC_DIR}/BufferToWaveRecorderNode.cpp
-	${SRC_DIR}/Chunk.cpp
-	${SRC_DIR}/Config.cpp
-	${SRC_DIR}/Log.cpp
-	${SRC_DIR}/MIDI.cpp
-	${SRC_DIR}/PGranularNode.cpp
-	${SRC_DIR}/RtMidi.cpp
-	${SRC_DIR}/Wave.cpp
+    ${SRC_DIR}/AudioEngine.cpp
+    ${SRC_DIR}/BufferToWaveRecorderNode.cpp
+    ${SRC_DIR}/Chunk.cpp
+    ${SRC_DIR}/Config.cpp
+    ${SRC_DIR}/Log.cpp
+    ${SRC_DIR}/MIDI.cpp
+    ${SRC_DIR}/PGranularNode.cpp
+    ${SRC_DIR}/RtMidi.cpp
+    ${SRC_DIR}/Wave.cpp
 )
 
 include( "${CINDER_PATH}/proj/cmake/modules/cinderMakeApp.cmake" )
@@ -47,10 +47,13 @@ add_definitions(-DUSE_PARTICLES)
 
 if(WIN32)
     add_definitions(-D__WINDOWS_MM__)
-    set( LIBS "winmm") # for MIDI
-elseif(UNIX)
+    set( LIBS "winmm")
+elseif(APPLE)
+    add_definitions(-D__MACOSX_CORE__)
+    set(LIBS "-framework CoreMIDI -framework CoreAudio -framework CoreFoundation")
+else() #LINUX
     add_definitions(-D__LINUX_ALSA__)
-    set( LIBS "-lasound -latomic -ljack") # for MIDI
+    set( LIBS "-lasound -latomic -ljack")
 endif()
 
 ci_make_app(
