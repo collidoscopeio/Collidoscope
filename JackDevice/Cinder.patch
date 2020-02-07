@@ -370,7 +370,7 @@ index c30632617..8c5b67382 100644
  	}
  
 diff --git a/src/cinder/audio/linux/ContextJack.cpp b/src/cinder/audio/linux/ContextJack.cpp
-index 606028a8f..1a68333f6 100644
+index 606028a8f..090cb6806 100644
 --- a/src/cinder/audio/linux/ContextJack.cpp
 +++ b/src/cinder/audio/linux/ContextJack.cpp
 @@ -1,50 +1,337 @@
@@ -438,7 +438,7 @@ index 606028a8f..1a68333f6 100644
  #include "cinder/audio/linux/ContextJack.h"
 +#include "cinder/audio/Exception.h"
 +
-+#define NUM_CHANNELS 2
++#define NUM_CHANNELS 1
  
  namespace cinder { namespace audio { namespace linux {
  
@@ -590,9 +590,9 @@ index 606028a8f..1a68333f6 100644
 +                       JACK_DEFAULT_AUDIO_TYPE,
 +                       JackPortIsInput, 0);
 +
-+    mInputDeviceNode->mInputPorts[1] = jack_port_register (mClient, "input2",
-+                       JACK_DEFAULT_AUDIO_TYPE,
-+                       JackPortIsInput, 0);
++    //mInputDeviceNode->mInputPorts[1] = jack_port_register (mClient, "input2",
++    //                   JACK_DEFAULT_AUDIO_TYPE,
++    //                   JackPortIsInput, 0);
 +
 +
 +    /* Tell the Jack server that we are ready to roll.  Our callback will start running now. */
@@ -612,9 +612,9 @@ index 606028a8f..1a68333f6 100644
 +        throw cinder::audio::AudioContextExc("cannot connect input port 0");
 +    }
 +
-+    if (jack_connect (mClient, mikePorts[1], jack_port_name( mInputDeviceNode->mInputPorts[1]) )) {
-+        throw cinder::audio::AudioContextExc("cannot connect input port 1");
-+    }
++    //if (jack_connect (mClient, mikePorts[1], jack_port_name( mInputDeviceNode->mInputPorts[1]) )) {
++    //    throw cinder::audio::AudioContextExc("cannot connect input port 1");
++    // }
 +
 +    // connect output ports to physical device (audio out )
 +    const char **speakerPorts = jack_get_ports (mClient, NULL, NULL,
@@ -628,9 +628,9 @@ index 606028a8f..1a68333f6 100644
 +        throw cinder::audio::AudioContextExc("cannot connect output port 0");
 +    }
 +
-+    if (jack_connect (mClient, jack_port_name (mOutputPorts[1]), speakerPorts[1])) {
-+        throw cinder::audio::AudioContextExc("cannot connect output port 1");
-+    }
++    //if (jack_connect (mClient, jack_port_name (mOutputPorts[1]), speakerPorts[1])) {
++    //    throw cinder::audio::AudioContextExc("cannot connect output port 1");
++    //}
 +
 +    jack_free( mikePorts );
 +    jack_free( speakerPorts );
