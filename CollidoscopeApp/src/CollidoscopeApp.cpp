@@ -476,9 +476,10 @@ CINDER_APP(CollidoscopeApp, RendererGl, [](App::Settings *settings)
 
     width = 1024;
     height = 768;
-    settings->setShouldQuit(true);
+    //settings->setShouldQuit(true);
   }
 
+  settings->setFullScreen(true);
   settings->setWindowSize(width, height);
   settings->setMultiTouchEnabled(false);
   settings->disableFrameRate();
