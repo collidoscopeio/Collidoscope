@@ -182,8 +182,8 @@ void CollidoscopeApp::keyDown(KeyEvent event)
       mAudioEngine.loopOn(waveIdx);
     else 
       mAudioEngine.loopOff(waveIdx);
+    break;
   };
-            break;
 
   case '9': 
   {
@@ -366,36 +366,29 @@ void CollidoscopeApp::readMidiMessages()
       int midiNote = m.getData_1();
       mAudioEngine.noteOff(waveIdx, midiNote);
     }
-    else if (m.getVoice() == collidoscope::MIDIMessage::Voice::ePitchBend) 
-    {
-      const uint16_t MSB = m.getData_2() << 7;
-      uint16_t value = m.getData_1(); // LSB 
-
-      value |= MSB;
-
-      // value ranges from 0 to 149. check boundaries in case sensor gives bad values 
-      if (value >= Config::NUM_CHUNKS) 
-        continue;
-
-      size_t startChunk = value;
-
-      const size_t selectionSizeBeforeStartUpdate = mWaves[waveIdx]->getSelectionSize();
-      mWaves[waveIdx]->setSelectionStart(startChunk);
-
-      mAudioEngine.setSelectionStart(waveIdx, startChunk * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
-
-      const size_t newSelectionSize = mWaves[waveIdx]->getSelectionSize();
-      if (selectionSizeBeforeStartUpdate != newSelectionSize) 
-      {
-        mAudioEngine.setSelectionSize(waveIdx, newSelectionSize * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
-      }
-    }
     else if (m.getVoice() == collidoscope::MIDIMessage::Voice::eControlChange) 
     {
       switch (m.getData_1()) //controller number 
  
       { 
-        case 1: // selection size 
+        case 1: // selection position
+        {
+          const size_t midiVal = m.getData_2();
+          size_t selectionPos = ci::lmap<size_t>(midiVal, 0, 127, 0, Config::NUM_CHUNKS-1);
+	  
+	      const size_t selectionSizeBeforeStartUpdate = mWaves[waveIdx]->getSelectionSize();
+	      mWaves[waveIdx]->setSelectionStart(selectionPos);
+
+	      mAudioEngine.setSelectionStart(waveIdx, selectionPos * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
+
+	      const size_t newSelectionSize = mWaves[waveIdx]->getSelectionSize();
+	      if (selectionSizeBeforeStartUpdate != newSelectionSize) 
+	      {
+            mAudioEngine.setSelectionSize(waveIdx, newSelectionSize * (Config::WAVE_LEN_SECONDS * mAudioEngine.getSampleRate() / Config::NUM_CHUNKS));
+          }
+          break;
+        }
+        case 2: // selection size 
         { 
           const size_t midiVal = m.getData_2();
           size_t numSelectionChunks = ci::lmap<size_t>(midiVal, 0, 127, 1, mConfig.getMaxSelectionNumChunks());
@@ -410,33 +403,16 @@ void CollidoscopeApp::readMidiMessages()
           break;
         };
 
-        case 4: // loop on off 
-        { 
-          unsigned char midiVal = m.getData_2();
-
-          if (midiVal > 0)
-            mAudioEngine.loopOn(waveIdx);
-          else
-            mAudioEngine.loopOff(waveIdx);
-          break;
-        };
-
-        case 5: // trigger record
-        {
-          mAudioEngine.record(waveIdx);
-          break;
-        };
-
-        case 2: // duration  
+        case 3: // duration  
         { 
           const float midiVal = m.getData_2(); // 0-127
           const float coeff = ci::lmap<float>(midiVal, 0.0f, 127.0f, 1.0f, Config::MAX_DURATION_COEFF);
           mAudioEngine.setGrainDurationCoeff(waveIdx, coeff);
           mWaves[waveIdx]->setParticleRadiusCoeff(float(coeff));
+          break;
         };
-                break;
 
-        case 7: // filter  
+        case 4: // filter  
         { 
           const double midiVal = m.getData_2(); // 0-127
           const double minCutoff = mConfig.getMinFilterCutoffFreq();
@@ -447,6 +423,24 @@ void CollidoscopeApp::readMidiMessages()
           mWaves[waveIdx]->setselectionAlpha(alpha);
           break;
         };
+
+        case 5: // loop on off 
+        { 
+          unsigned char midiVal = m.getData_2();
+
+          if (midiVal > 0)
+            mAudioEngine.loopOn(waveIdx);
+          else
+            mAudioEngine.loopOff(waveIdx);
+          break;
+        };
+
+        case 6: // trigger record
+        {
+          mAudioEngine.record(waveIdx);
+          break;
+        };
+
       }
     }
   }

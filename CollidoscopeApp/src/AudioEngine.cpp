@@ -122,6 +122,7 @@ void AudioEngine::setup(const Config& config)
 
     // filter goes to output 
     mLowPassFilterNodes[chan] >> mOutputRouterNodes[chan]->route(0, chan, 1) >> ctx->getOutput();
+    mLowPassFilterNodes[chan] >> mOutputRouterNodes[chan]->route(0, 1, 1) >> ctx->getOutput();
 
     // what goes to output goes to oscilloscope as well
     mLowPassFilterNodes[chan] >> mOutputMonitorNodes[chan];
