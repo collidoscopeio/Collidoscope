@@ -77,7 +77,7 @@ void CollidoscopeApp::setup()
 {
   static_assert(NUM_WAVES == 1 || NUM_WAVES == 2, "Either one or two waves");
 
-  //hideCursor();
+  hideCursor();
   /* setup is logged: setup steps and errors */
 
   /*try {
@@ -343,7 +343,7 @@ void CollidoscopeApp::readMidiMessages()
   for (auto &m : midiMessages) 
   {
 
-    const size_t waveIdx = mConfig.getWaveForMIDIChannel(m.getChannel());
+    const size_t waveIdx = mConfig.getWaveForMIDIChannel(0);
     if (waveIdx >= NUM_WAVES)
       continue;
 
@@ -426,18 +426,24 @@ void CollidoscopeApp::readMidiMessages()
 
         case 5: // loop on off 
         { 
+          static bool isOn = false;
           unsigned char midiVal = m.getData_2();
 
           if (midiVal > 0)
-            mAudioEngine.loopOn(waveIdx);
-          else
-            mAudioEngine.loopOff(waveIdx);
+          {
+            isOn = !isOn;
+            isOn ? mAudioEngine.loopOn(waveIdx) : mAudioEngine.loopOff(waveIdx);
+          }
+            
           break;
         };
 
         case 6: // trigger record
         {
-          mAudioEngine.record(waveIdx);
+          unsigned char midiVal = m.getData_2();
+
+          if (midiVal > 0)
+            mAudioEngine.record(waveIdx);
           break;
         };
 

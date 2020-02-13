@@ -78,12 +78,11 @@ public:
    */
   ci::Color getWaveSelectionColor(size_t waveIdx) const
   {
-    if (waveIdx == 0) {
-      return cinder::Color(243.0f / 255.0f, 6.0f / 255.0f, 62.0f / 255.0f);
-    }
-    else {
-      return cinder::Color(255.0f / 255.0f, 204.0f / 255.0f, 0.0f / 255.0f);
-    }
+    // red
+    //  return cinder::Color(243.0f / 255.0f, 6.0f / 255.0f, 62.0f / 255.0f);
+    
+    // yellow 
+    return cinder::Color(255.0f / 255.0f, 204.0f / 255.0f, 0.0f / 255.0f);
   }
 
   /**
