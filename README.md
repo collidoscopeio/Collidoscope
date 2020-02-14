@@ -1,5 +1,7 @@
 # Collidoscope
 
+Tested on Raspbery Pi 3 Model B+ running Raspbian GNU/Linux 10 (buster)
+
 ### Install cmake 
 ```
 sudo apt-get install cmake 
