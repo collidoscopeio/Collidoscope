@@ -370,7 +370,7 @@ index c30632617..8c5b67382 100644
  	}
  
 diff --git a/src/cinder/audio/linux/ContextJack.cpp b/src/cinder/audio/linux/ContextJack.cpp
-index 606028a8f..090cb6806 100644
+index 606028a8f..da274748f 100644
 --- a/src/cinder/audio/linux/ContextJack.cpp
 +++ b/src/cinder/audio/linux/ContextJack.cpp
 @@ -1,50 +1,337 @@
@@ -628,9 +628,9 @@ index 606028a8f..090cb6806 100644
 +        throw cinder::audio::AudioContextExc("cannot connect output port 0");
 +    }
 +
-+    //if (jack_connect (mClient, jack_port_name (mOutputPorts[1]), speakerPorts[1])) {
-+    //    throw cinder::audio::AudioContextExc("cannot connect output port 1");
-+    //}
++    if (jack_connect (mClient, jack_port_name (mOutputPorts[0]), speakerPorts[1])) {
++        throw cinder::audio::AudioContextExc("cannot connect output port 1");
++    }
 +
 +    jack_free( mikePorts );
 +    jack_free( speakerPorts );
